@@ -403,7 +403,11 @@
     setTimeout(()=>{ highlightActive(); updateStatus(); }, 80);
   }
   function updateDeckPadding(){
-    if(state.docs.length <= 1){ deck.style.paddingLeft = deck.style.paddingRight = "8px"; return; }   // single doc: no centering margin / no extra scrollbar
+    if(state.docs.length <= 1){
+      const pw = state.docs[0] ? state.docs[0].panel.offsetWidth : 0;
+      const pad = Math.max(8, (deck.clientWidth - pw)/2);   // center a lone doc; sums to clientWidth → no extra scrollbar
+      deck.style.paddingLeft = deck.style.paddingRight = pad + "px"; return;
+    }
     const half = deck.clientWidth/2;
     const firstW = state.docs[0].panel.offsetWidth || 240;
     const lastW  = state.docs[state.docs.length-1].panel.offsetWidth || 240;
@@ -1189,7 +1193,7 @@
       if(want){ if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{}); }
       else if(document.fullscreenElement && document.exitFullscreen){ document.exitFullscreen().catch(()=>{}); }
     }catch(e){}
-    setTimeout(()=>{ updateDeckPadding(); if(want && activeOrFocused()) fitWidth(); renderVisible(true); updateStatus(); }, 90);
+    setTimeout(()=>{ updateDeckPadding(); if(want && activeOrFocused()) fitPage(); renderVisible(true); updateStatus(); }, 90);   // theater: fit the whole page to the screen
   }
   $("theaterExit").onclick = ()=>toggleTheater(false);
   document.addEventListener("fullscreenchange", ()=>{ if(!document.fullscreenElement && document.body.classList.contains("theater")){ document.body.classList.remove("theater"); setTimeout(()=>{ updateDeckPadding(); renderVisible(true); }, 60); } });
