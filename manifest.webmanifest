@@ -1,12 +1,15 @@
 {
-  "name": "PDF Canvas",
-  "short_name": "PDF Canvas",
-  "description": "Read many PDFs side by side on a 2D canvas \u2014 highlight, mark up, and snip.",
+  "name": "WA PDF Reader",
+  "short_name": "WA PDF Reader",
+  "description": "Read many PDFs side by side \u2014 highlight, mark up, search, and snip.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#e9ebef",
   "theme_color": "#1a2e4a",
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
   "icons": [
     {
       "src": "icon-192.png",

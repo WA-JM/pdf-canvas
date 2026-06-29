@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PDF Canvas — Watchtower</title>
+<title>WA PDF Reader</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#1a2e4a">
 <style>
   :root{
-    --navy:#1a2e4a; --navy-2:#24406b; --gold:#c5a55a; --gold-dk:#a8893f;
+    --navy:#1a2e4a; --navy-2:#24406b; --gold:#3a78c8; --gold-dk:#2b5a9e;
     --bg:#e9ebef; --card:#ffffff; --ink:#1a2e4a; --muted:#5b6b82;
     --line:#d4d9e0; --shadow:0 2px 10px rgba(26,46,74,.13),0 12px 30px rgba(26,46,74,.08);
   }
@@ -64,15 +64,15 @@
   /* ---------------- Deck: horizontal strip of document columns ---------------- */
   #deck{
     position:absolute;inset:0;display:flex;flex-direction:row;align-items:stretch;gap:18px;
-    overflow-x:auto;overflow-y:hidden;padding:18px;scroll-behavior:auto;
+    overflow-x:auto;overflow-y:hidden;padding:10px;scroll-behavior:auto;
   }
   .panel{flex:0 0 auto;display:flex;flex-direction:column;height:100%;min-height:0}
   /* the document you're reading: gold header + gold ring around the scrollable area */
-  .panel.focused .panel-head{background:linear-gradient(180deg,var(--gold),var(--gold-dk));color:#3a2f12}
-  .panel.focused .panel-head .name{color:#3a2f12}
-  .panel.focused .panel-head .name:focus{background:rgba(58,47,18,.14)}
-  .panel.focused .panel-head .x{color:#3a2f12}
-  .panel.focused .panel-body{box-shadow:inset 0 0 0 3px var(--gold)}
+  .panel.focused .panel-head{background:linear-gradient(180deg,var(--gold),var(--gold-dk));color:#fff}
+  .panel.focused .panel-head .name{color:#fff}
+  .panel.focused .panel-head .name:focus{background:rgba(255,255,255,.18)}
+  .panel.focused .panel-head .x{color:#fff}
+  .panel.focused .panel-body{box-shadow:inset 0 0 0 2px var(--gold)}
   .panel-head{
     flex:0 0 auto;height:30px;display:flex;align-items:center;gap:7px;padding:0 8px;color:#fff;
     border-radius:9px 9px 0 0;background:linear-gradient(180deg,var(--navy-2),var(--navy));
@@ -85,7 +85,7 @@
   .panel-head .x:hover{opacity:1;background:rgba(255,80,80,.35)}
   .panel-body{
     flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
-    background:#dfe3e9;border-radius:0 0 9px 9px;padding:12px;
+    background:#dfe3e9;border-radius:0 0 9px 9px;padding:6px;
     display:flex;flex-direction:column;align-items:center;gap:14px;scrollbar-width:thin;
   }
   .panel-body::-webkit-scrollbar{width:11px}
@@ -162,6 +162,21 @@
   .shl{position:absolute;background:rgba(255,212,0,.45);border-radius:1px;pointer-events:none;mix-blend-mode:multiply;z-index:4}
   .shl.current{background:rgba(255,138,0,.62);box-shadow:0 0 0 1.5px rgba(190,85,0,.8)}
 
+  /* ---------------- Search results in the sidebar ---------------- */
+  .result-list{flex:1 1 auto;overflow-y:auto;min-height:0;padding:4px 0 12px}
+  .result-head{padding:9px 13px 6px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+  .result-empty{padding:14px 13px;font-size:12.5px;color:var(--muted)}
+  .result{padding:8px 13px;cursor:pointer;border-left:3px solid transparent;font-size:12px;line-height:1.45;color:var(--ink)}
+  .result:hover{background:rgba(26,46,74,.06)}
+  .result.current{background:#fff;border-left-color:var(--gold);box-shadow:inset -1px 0 0 var(--line)}
+  .result-meta{font-size:10.5px;font-weight:700;color:var(--gold-dk);margin-bottom:2px}
+  .result-snip b{background:rgba(255,212,0,.5);font-weight:600;border-radius:2px;padding:0 1px}
+
+  /* ---------------- Theater / full-screen mode ---------------- */
+  body.theater .appbar, body.theater .sidebar, body.theater .statusbar{display:none}
+  #theaterExit{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:70;display:none;border:none;background:rgba(26,46,74,.82);color:#fff;font:inherit;font-size:12px;font-weight:600;padding:6px 13px;border-radius:9px;cursor:pointer;box-shadow:0 4px 14px rgba(26,46,74,.3)}
+  body.theater #theaterExit{display:block}
+
   /* ---------------- Toast + help ---------------- */
   #toast{position:fixed;bottom:38px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--navy);color:#fff;font-size:13px;font-weight:600;padding:11px 18px;border-radius:11px;box-shadow:0 10px 30px rgba(26,46,74,.35);z-index:80;transition:opacity .2s,transform .2s;pointer-events:none;max-width:80vw}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -181,10 +196,9 @@
 <body data-tool="read">
 
   <header class="appbar" id="toolbar">
-    <div class="brand"><span class="dot"></span>PDF Canvas</div>
+    <div class="brand"><span class="dot"></span>WA PDF Reader</div>
     <button class="tb icon" id="btnSidebar" title="Show / hide the document panel">☰</button>
     <button class="tb primary" id="btnOpen">＋ Open</button>
-    <button class="tb" id="btnDemo">Demo</button>
     <div class="sep"></div>
     <div class="tools" id="toolGroup">
       <button class="tool active" data-t="read" id="tRead" title="Read / scroll (V)">✋ Read</button>
@@ -228,6 +242,7 @@
       </div>
       <div class="doc-list" id="docList"></div>
       <div class="thumb-list" id="thumbList" style="display:none"></div>
+      <div class="result-list" id="resultList" style="display:none"></div>
     </aside>
     <main class="stage">
       <div id="deck">
@@ -237,7 +252,6 @@
           <p>Each document gets its own column that <b>scrolls on its own</b>. Read one by scrolling it; scroll sideways (or Shift-scroll) to reach the others. Highlight, mark up in red, or snip any region to your clipboard.</p>
           <div class="cta">
             <button class="tb primary" id="btnOpen2">＋ Open PDFs</button>
-            <button class="tb" id="btnDemo2">Load a demo</button>
           </div>
         </div>
       </div>
@@ -270,12 +284,13 @@
     <button class="sb-btn close" id="searchClose" title="Close (Esc)">×</button>
   </div>
 
+  <button id="theaterExit">Exit full screen — Esc</button>
   <input type="file" id="fileInput" accept=".pdf,.pdfx,application/pdf" multiple style="display:none">
   <div id="toast"></div>
 
   <div id="scrim">
     <div class="modal">
-      <h3>PDF Canvas — help <button id="btnHelpX">×</button></h3>
+      <h3>WA PDF Reader — help <button id="btnHelpX">×</button></h3>
       <div class="body">
         <div class="row"><div class="k"><kbd>Scroll</kbd></div><div>Read up/down within a document — <b>each column scrolls independently</b></div></div>
         <div class="row"><div class="k"><kbd>Shift</kbd>+Scroll</div><div>Move sideways between documents</div></div>
@@ -290,6 +305,7 @@
         <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd></div><div>Jump to the previous / next page of the selected document</div></div>
         <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>F</kbd></div><div>Find in the active document — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> searches all documents. Enter / Shift+Enter step through hits.</div></div>
         <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>P</kbd></div><div>Print the selected document</div></div>
+        <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>Enter</kbd></div><div>Full-screen / theater reading mode (Esc to exit)</div></div>
         <div class="note"><b>.pdfx:</b> “Save .pdfx” merges all documents into one normal PDF (opens anywhere); re-open it here to split back into columns. <i>Annotations are not yet burned into the saved file — use Snip to capture marked-up regions.</i></div>
       </div>
     </div>
@@ -375,12 +391,12 @@
     setTimeout(()=>{ highlightActive(); updateStatus(); }, 80);
   }
   function updateDeckPadding(){
-    if(!state.docs.length){ deck.style.paddingLeft = deck.style.paddingRight = "18px"; return; }
+    if(!state.docs.length){ deck.style.paddingLeft = deck.style.paddingRight = "10px"; return; }
     const half = deck.clientWidth/2;
     const firstW = state.docs[0].panel.offsetWidth || 240;
     const lastW  = state.docs[state.docs.length-1].panel.offsetWidth || 240;
-    deck.style.paddingLeft  = Math.max(18, half - firstW/2) + "px";
-    deck.style.paddingRight = Math.max(18, half - lastW/2)  + "px";
+    deck.style.paddingLeft  = Math.max(10, half - firstW/2) + "px";
+    deck.style.paddingRight = Math.max(10, half - lastW/2)  + "px";
   }
   // Ctrl+Up / Ctrl+Down — jump to the previous / next PDF page within the active document
   function scrollActivePage(dir){
@@ -798,7 +814,7 @@
       const copied=await out.copyPages(src, idx); copied.forEach(pg=>out.addPage(pg));
       manifest.push({ name:d.name, pages:d.pageCount });
     }
-    out.setTitle("PDF Canvas bundle"); out.setProducer("Watchtower PDF Canvas");
+    out.setTitle("WA PDF Reader bundle"); out.setProducer("WA PDF Reader");
     out.setSubject("PDFX1|"+b64e(JSON.stringify(manifest)));
     download(await out.save(), "bundle.pdfx");
     toast("Saved bundle.pdfx — "+manifest.length+" files in one PDF");
@@ -828,26 +844,6 @@
   // ===================================================================
   //  Demo
   // ===================================================================
-  async function loadDemo(){
-    const specs=[["Pay Stub",2,[0.10,0.36,0.62]],["Bank Statement",6,[0.10,0.45,0.30]],["Tax Return — Form 1040",4,[0.62,0.46,0.16]],["Insurance Declaration",1,[0.42,0.20,0.52]],["Closing Disclosure",3,[0.70,0.28,0.24]]];
-    toast("Generating demo documents…"); const before=state.docs.length;
-    for(const [name,n,col] of specs){
-      const doc=await PL.PDFDocument.create();
-      const font=await doc.embedFont(PL.StandardFonts.Helvetica), fontB=await doc.embedFont(PL.StandardFonts.HelveticaBold);
-      for(let i=0;i<n;i++){
-        const pg=doc.addPage([612,792]);
-        pg.drawRectangle({x:0,y:732,width:612,height:60,color:PL.rgb(col[0],col[1],col[2])});
-        pg.drawText(name,{x:40,y:752,size:19,font:fontB,color:PL.rgb(1,1,1)});
-        pg.drawText("Page "+(i+1)+" of "+n,{x:40,y:702,size:11,font,color:PL.rgb(0.35,0.4,0.48)});
-        let y=666; for(let l=0;l<19;l++){ const w=480-((l*67)%230); pg.drawRectangle({x:40,y,width:w,height:7,color:PL.rgb(0.85,0.865,0.885)}); y-=25; }
-        pg.drawText("Fine print — zoom in to confirm this stays sharp. Page "+(i+1)+".",{x:40,y:52,size:7,font,color:PL.rgb(0.5,0.55,0.62)});
-      }
-      await addFromBytes(await doc.save(), name+".pdf");
-    }
-    if(before===0) fitWidth(); else renderVisible(true);
-    toast("Loaded "+specs.length+" demo documents — try Highlight, Marker, or Snip");
-  }
-
   // ===================================================================
   //  Drag & drop, keyboard, wiring
   // ===================================================================
@@ -863,7 +859,6 @@
   function pick(){ fi.value=""; fi.click(); }
   fi.addEventListener("change", ()=>openFiles(fi.files));
   $("btnOpen").onclick=pick; $("btnOpen2").onclick=pick;
-  $("btnDemo").onclick=loadDemo; $("btnDemo2").onclick=loadDemo;
   $("btnSave").onclick=savePdfx;
   $("btnPrint").onclick=printActive;
   $("btnZoomIn").onclick=()=>zoomCenter(1.25);
@@ -874,6 +869,7 @@
   document.addEventListener("keydown", e=>{
     if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="f"){ e.preventDefault(); openSearch(e.shiftKey ? "all" : "doc"); return; }
     if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="p"){ e.preventDefault(); printActive(); return; }
+    if((e.ctrlKey||e.metaKey) && e.key==="Enter"){ e.preventDefault(); toggleTheater(); return; }
     if(e.target && (e.target.tagName==="INPUT"||e.target.isContentEditable)) return;
     const k=e.key.toLowerCase();
     if(e.key==="Tab"){ e.preventDefault(); jumpDoc(e.shiftKey ? -1 : 1); return; }   // Tab / Shift+Tab between docs
@@ -886,7 +882,7 @@
       else if(e.key==="ArrowUp"){ e.preventDefault(); scrollActivePage(-1); }
       return;
     }
-    if(e.key==="Escape"){ showHelp(false); if(search.open) closeSearch(); return; }
+    if(e.key==="Escape"){ if(document.body.classList.contains("theater")) toggleTheater(false); showHelp(false); if(search.open) closeSearch(); return; }
     // arrow keys / PageUp-Down / Space / Home / End scroll WITHIN the active document
     const ab = state.active && state.active.body;
     if(ab){
@@ -916,16 +912,16 @@
     const page = await p.doc.pdfjs.getPage(p.globalPage);
     const vp = page.getViewport({ scale:1 });
     const tc = await page.getTextContent();
-    const items = []; let text = "";
+    const items = []; let text = "", raw = "";
     for(const it of tc.items){
       if(!it.str) continue;
       const tx = PDFJS.Util.transform(vp.transform, it.transform);
       const fh = Math.hypot(tx[2], tx[3]) || it.height || 10;
       const x = tx[4], yTop = tx[5] - fh, w = it.width;
       items.push({ cstart:text.length, len:it.str.length, nx:x/vp.width, ny:yTop/vp.height, nw:w/vp.width, nh:fh/vp.height });
-      text += it.str.toLowerCase() + " ";
+      text += it.str.toLowerCase() + " "; raw += it.str + " ";
     }
-    p._search = { text, items };
+    p._search = { text, raw, items };
     return p._search;
   }
   function matchRects(si, mStart, mEnd){
@@ -947,6 +943,40 @@
   }
   function markCurrent(){ search.matches.forEach((m,i)=>{ if(m._els) for(const e of m._els) e.classList.toggle("current", i===search.idx); }); }
   function updateSearchCount(){ $("searchCount").textContent = search.matches.length ? (search.idx+1)+"/"+search.matches.length : "0/0"; }
+  function makeSnippet(raw, start, len){
+    const a=Math.max(0,start-44), b=Math.min(raw.length, start+len+52), clean=s=>s.replace(/\s+/g," ").trim();
+    return { pre:(a>0?"… ":"")+clean(raw.slice(a,start))+" ", mid:clean(raw.slice(start,start+len)), post:" "+clean(raw.slice(start+len,b))+(b<raw.length?" …":"") };
+  }
+  function renderResults(){
+    const list=$("resultList"); list.replaceChildren();
+    if(!search.matches.length){ list.appendChild(el("div",{class:"result-empty",text:(search.query||"").trim()?"No matches":"Type to search"})); return; }
+    list.appendChild(el("div",{class:"result-head",text: search.matches.length+" result"+(search.matches.length>1?"s":"")+(search.scope==="all"?" · all docs":"")}));
+    search.matches.forEach((m,i)=>{
+      const meta=el("div",{class:"result-meta",text:(search.scope==="all"?m.docName+" · ":"")+"p"+m.pageNo});
+      const snip=el("div",{class:"result-snip"});
+      snip.appendChild(document.createTextNode(m.snip.pre));
+      const b=el("b"); b.textContent=m.snip.mid; snip.appendChild(b);
+      snip.appendChild(document.createTextNode(m.snip.post));
+      const item=el("div",{class:"result"},[meta,snip]);
+      item.addEventListener("click", ()=>gotoMatch(i));
+      m._resEl=item; list.appendChild(item);
+    });
+    markResultCurrent();
+  }
+  function markResultCurrent(){ search.matches.forEach((m,i)=>{ if(m._resEl){ const on=i===search.idx; m._resEl.classList.toggle("current",on); if(on) m._resEl.scrollIntoView({block:"nearest"}); } }); }
+  let _searchPrevCollapsed=true;
+  function enterSearchSidebar(){
+    _searchPrevCollapsed = document.querySelector(".sidebar").classList.contains("collapsed");
+    document.querySelector(".side-tabs").style.display="none";
+    $("docList").style.display="none"; $("thumbList").style.display="none"; $("resultList").style.display="";
+    setSidebarCollapsed(false);
+  }
+  function exitSearchSidebar(){
+    $("resultList").style.display="none";
+    document.querySelector(".side-tabs").style.display="";
+    setSidebarMode(sidebarMode);
+    setSidebarCollapsed(_searchPrevCollapsed);
+  }
 
   async function runSearch(){
     const my = ++search.run;
@@ -961,13 +991,13 @@
       let from = 0, hit;
       while((hit = si.text.indexOf(q, from)) !== -1){
         const rects = matchRects(si, hit, hit + q.length);
-        if(rects.length) found.push({ doc:d, page:p, rects });
+        if(rects.length) found.push({ doc:d, page:p, rects, snip:makeSnippet(si.raw, hit, q.length), docName:d.name, pageNo:d.pages.indexOf(p)+1 });
         from = hit + Math.max(1, q.length);
         if(found.length > 1000) break outer;
       }
     } }
     search.matches = found;
-    renderSearchHighlights();
+    renderSearchHighlights(); renderResults();
     if(found.length){ search.idx = 0; gotoMatch(0); }
     updateSearchCount();
   }
@@ -976,7 +1006,7 @@
     search.idx = (i + search.matches.length) % search.matches.length;
     const m = search.matches[search.idx];
     if(!m.page.el.isConnected) return;
-    markCurrent();
+    markCurrent(); markResultCurrent();
     selectDoc(m.doc, true);                          // center the doc horizontally
     const bodyRect = m.doc.body.getBoundingClientRect(), pageRect = m.page.el.getBoundingClientRect();
     const matchY = m.doc.body.scrollTop + (pageRect.top - bodyRect.top) + m.rects[0].ny * pageRect.height;
@@ -987,15 +1017,16 @@
     search.open = true; if(scope) search.scope = scope;
     sbEl.classList.add("show");
     for(const t of document.querySelectorAll(".sb-tab")) t.classList.toggle("active", t.dataset.scope===search.scope);
+    enterSearchSidebar();
     sInput.focus(); sInput.select();
-    if(search.query) runSearch();
+    if(search.query) runSearch(); else renderResults();
   }
-  function closeSearch(){ search.open=false; sbEl.classList.remove("show"); clearSearchHighlights(); search.matches=[]; search.idx=-1; }
+  function closeSearch(){ search.open=false; sbEl.classList.remove("show"); clearSearchHighlights(); search.matches=[]; search.idx=-1; exitSearchSidebar(); }
 
   let searchTimer = 0;
   sInput.addEventListener("input", ()=>{ search.query = sInput.value; clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 170); });
   sInput.addEventListener("keydown", e=>{
-    if(e.key==="Enter"){ e.preventDefault(); gotoMatch(search.idx + (e.shiftKey ? -1 : 1)); }
+    if(e.key==="Enter" && !e.ctrlKey && !e.metaKey){ e.preventDefault(); gotoMatch(search.idx + (e.shiftKey ? -1 : 1)); }
     else if(e.key==="Escape"){ e.preventDefault(); closeSearch(); }
   });
   $("searchNext").onclick = ()=>gotoMatch(search.idx+1);
@@ -1102,6 +1133,19 @@
     setTimeout(()=>{ updateDeckPadding(); renderVisible(true); }, 180);   // recompute after the width transition
   }
   $("btnSidebar").onclick = ()=>setSidebarCollapsed(!document.querySelector(".sidebar").classList.contains("collapsed"));
+
+  // ---- theater / full-screen reading mode ----
+  function toggleTheater(on){
+    const want = (on===undefined) ? !document.body.classList.contains("theater") : on;
+    document.body.classList.toggle("theater", want);
+    try{
+      if(want){ if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{}); }
+      else if(document.fullscreenElement && document.exitFullscreen){ document.exitFullscreen().catch(()=>{}); }
+    }catch(e){}
+    setTimeout(()=>{ updateDeckPadding(); if(want && activeOrFocused()) fitWidth(); renderVisible(true); updateStatus(); }, 90);
+  }
+  $("theaterExit").onclick = ()=>toggleTheater(false);
+  document.addEventListener("fullscreenchange", ()=>{ if(!document.fullscreenElement && document.body.classList.contains("theater")){ document.body.classList.remove("theater"); setTimeout(()=>{ updateDeckPadding(); renderVisible(true); }, 60); } });
 
   // ---- PWA: service worker + OS file handling (open PDFs from the desktop) ----
   if("serviceWorker" in navigator){ window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").catch(()=>{})); }
