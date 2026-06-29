@@ -171,6 +171,7 @@
       <button class="tb icon" id="btnZoomIn" title="Zoom in">＋</button>
     </div>
     <div class="sep"></div>
+    <button class="tb" id="btnPrint" title="Print the selected document (Ctrl+P)">🖨 Print</button>
     <button class="tb" id="btnSave" title="Save all documents as one .pdfx">Save .pdfx</button>
     <button class="tb icon" id="btnHelp" title="Help">?</button>
   </header>
@@ -236,6 +237,7 @@
         <div class="row"><div class="k"><kbd>↑</kbd> <kbd>↓</kbd> / <kbd>PgUp</kbd> <kbd>PgDn</kbd></div><div>Scroll within the selected document (also Space, Home/End)</div></div>
         <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd></div><div>Jump to the previous / next page of the selected document</div></div>
         <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>F</kbd></div><div>Find in the active document — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> searches all documents. Enter / Shift+Enter step through hits.</div></div>
+        <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>P</kbd></div><div>Print the selected document</div></div>
         <div class="note"><b>.pdfx:</b> “Save .pdfx” merges all documents into one normal PDF (opens anywhere); re-open it here to split back into columns. <i>Annotations are not yet burned into the saved file — use Snip to capture marked-up regions.</i></div>
       </div>
     </div>
@@ -730,6 +732,27 @@
     toast("Saved bundle.pdfx — "+manifest.length+" files in one PDF");
   }
 
+  // ---- Print the selected document (extract its pages → print the real PDF) ----
+  async function printActive(){
+    const d = state.active; if(!d){ toast("Select a document first"); return; }
+    toast("Preparing “"+d.name+"” to print…");
+    try{
+      const src = await PL.PDFDocument.load(d.srcBytes);
+      const out = await PL.PDFDocument.create();
+      const idx=[]; for(let i=0;i<d.pageCount;i++) idx.push(d.pageStart+i);
+      (await out.copyPages(src, idx)).forEach(p=>out.addPage(p));
+      out.setTitle(d.name);
+      const url = URL.createObjectURL(new Blob([await out.save()], {type:"application/pdf"}));
+      let frame = $("printFrame");
+      if(!frame){ frame = el("iframe",{id:"printFrame", style:"position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden"}); document.body.appendChild(frame); }
+      frame.onload = ()=>{
+        setTimeout(()=>{ try{ frame.contentWindow.focus(); frame.contentWindow.print(); }catch(err){ window.open(url, "_blank"); } }, 300);
+        setTimeout(()=>URL.revokeObjectURL(url), 60000);
+      };
+      frame.src = url;
+    }catch(err){ console.warn(err); toast("Couldn’t prepare the print"); }
+  }
+
   // ===================================================================
   //  Demo
   // ===================================================================
@@ -770,6 +793,7 @@
   $("btnOpen").onclick=pick; $("btnOpen2").onclick=pick;
   $("btnDemo").onclick=loadDemo; $("btnDemo2").onclick=loadDemo;
   $("btnSave").onclick=savePdfx;
+  $("btnPrint").onclick=printActive;
   $("btnFitW").onclick=fitWidth;
   $("btnZoomIn").onclick=()=>zoomCenter(1.25);
   $("btnZoomOut").onclick=()=>zoomCenter(0.8);
@@ -779,6 +803,7 @@
   $("scrim").addEventListener("click", e=>{ if(e.target===$("scrim")) showHelp(false); });
   document.addEventListener("keydown", e=>{
     if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="f"){ e.preventDefault(); openSearch(e.shiftKey ? "all" : "doc"); return; }
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="p"){ e.preventDefault(); printActive(); return; }
     if(e.target && (e.target.tagName==="INPUT"||e.target.isContentEditable)) return;
     const k=e.key.toLowerCase();
     if(e.key==="Tab"){ e.preventDefault(); jumpDoc(e.shiftKey ? -1 : 1); return; }   // Tab / Shift+Tab between docs

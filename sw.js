@@ -1,4 +1,4 @@
-const CACHE = "pdfcanvas-v5";
+const CACHE = "pdfcanvas-v6";
 const LOCAL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 self.addEventListener("install", e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c => c.addAll(LOCAL).catch(()=>{}))); });
 self.addEventListener("activate", e => { self.clients.claim(); e.waitUntil(caches.keys().then(ks => Promise.all(ks.map(k => k===CACHE ? null : caches.delete(k))))); });
