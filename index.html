@@ -39,7 +39,7 @@
   .statusbar b{color:var(--navy);font-weight:600}
 
   .brand{display:flex;align-items:center;gap:8px;padding:0 8px 0 2px;font-weight:700;font-size:14.5px;color:var(--navy)}
-  .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 3px rgba(197,165,90,.22)}
+  .brand .logo{display:inline-flex;align-items:center;justify-content:center;width:27px;height:21px;border-radius:5px;background:var(--navy);color:#fff;font-size:11px;font-weight:800;letter-spacing:.5px}
   .sep{width:1px;align-self:center;height:26px;background:var(--line);margin:0 4px}
   button.tb{
     appearance:none;border:1px solid transparent;background:transparent;color:var(--navy);
@@ -64,7 +64,7 @@
   /* ---------------- Deck: horizontal strip of document columns ---------------- */
   #deck{
     position:absolute;inset:0;display:flex;flex-direction:row;align-items:stretch;gap:18px;
-    overflow-x:auto;overflow-y:hidden;padding:10px;scroll-behavior:auto;
+    overflow-x:auto;overflow-y:hidden;padding:4px 10px 8px;scroll-behavior:auto;
   }
   .panel{flex:0 0 auto;display:flex;flex-direction:column;height:100%;min-height:0}
   /* the document you're reading: gold header + gold ring around the scrollable area */
@@ -72,7 +72,6 @@
   .panel.focused .panel-head .name{color:#fff}
   .panel.focused .panel-head .name:focus{background:rgba(255,255,255,.18)}
   .panel.focused .panel-head .x{color:#fff}
-  .panel.focused .panel-body{box-shadow:inset 0 0 0 2px var(--gold)}
   .panel-head{
     flex:0 0 auto;height:30px;display:flex;align-items:center;gap:7px;padding:0 8px;color:#fff;
     border-radius:9px 9px 0 0;background:linear-gradient(180deg,var(--navy-2),var(--navy));
@@ -196,7 +195,7 @@
 <body data-tool="read">
 
   <header class="appbar" id="toolbar">
-    <div class="brand"><span class="dot"></span>WA PDF Reader</div>
+    <div class="brand"><span class="logo">WA</span>PDF Reader</div>
     <button class="tb icon" id="btnSidebar" title="Show / hide the document panel">☰</button>
     <button class="tb primary" id="btnOpen">＋ Open</button>
     <div class="sep"></div>
@@ -391,7 +390,7 @@
     setTimeout(()=>{ highlightActive(); updateStatus(); }, 80);
   }
   function updateDeckPadding(){
-    if(!state.docs.length){ deck.style.paddingLeft = deck.style.paddingRight = "10px"; return; }
+    if(state.docs.length <= 1){ deck.style.paddingLeft = deck.style.paddingRight = "8px"; return; }   // single doc: no centering margin / no extra scrollbar
     const half = deck.clientWidth/2;
     const firstW = state.docs[0].panel.offsetWidth || 240;
     const lastW  = state.docs[state.docs.length-1].panel.offsetWidth || 240;
