@@ -341,7 +341,8 @@
   if(PDFJS) PDFJS.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
   const DPR = Math.min(window.devicePixelRatio || 1, 3);
-  const MAX_CANVAS = 4200;
+  const MAX_CANVAS = 5200;
+  const SUPERSAMPLE = 2;            // render this many × display resolution, then downscale → crisp images on 1× (1080p) screens
   const MINZ = 0.1, MAXZ = 8;
   const HL_W = 9, PEN_W = 2.2;
   const HL_ALPHA = 0.4;
@@ -516,7 +517,7 @@
   //  Rendering — anti-flash offscreen swap; native scroll never blanks
   // ===================================================================
   function quality(){ return clamp(state.zoom, 0.4, MAXZ) * DPR; }
-  function pageQuality(p){ return Math.min(quality()*1.2, MAX_CANVAS / Math.max(p.baseW, p.baseH)); }   // 1.2× supersample → crisper images
+  function pageQuality(p){ return Math.min(quality()*SUPERSAMPLE, MAX_CANVAS / Math.max(p.baseW, p.baseH)); }   // supersample → crisper images
 
   async function renderPage(p, force){
     const q = pageQuality(p), rot = p.doc.rotation||0;
