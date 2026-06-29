@@ -932,7 +932,9 @@
   deck.addEventListener("drop", e=>{ if(e.dataTransfer&&e.dataTransfer.files) openFiles(e.dataTransfer.files); });
 
   let toastTimer=0;
-  function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),2600); }
+  function toast(msg, ms, onClick){ const t=$("toast"); t.textContent=msg; t.classList.add("show");
+    t.style.cursor = onClick ? "pointer" : ""; t.onclick = onClick ? ()=>{ try{onClick();}catch(e){} } : null;
+    clearTimeout(toastTimer); toastTimer=setTimeout(()=>{ t.classList.remove("show"); t.onclick=null; t.style.cursor=""; }, ms||2600); }
   function showHelp(v){ $("scrim").classList.toggle("show",v); }
 
   const fi=$("fileInput");
@@ -963,7 +965,13 @@
       else if(e.key==="ArrowUp"){ e.preventDefault(); scrollActivePage(-1); }
       return;
     }
-    if(e.key==="Escape"){ if(document.body.classList.contains("theater")) toggleTheater(false); showHelp(false); if(search.open) closeSearch(); return; }
+    if(e.key==="Escape"){                                                    // exit overlays/tools in priority order, one per press
+      if(document.body.classList.contains("theater")){ toggleTheater(false); return; }
+      if($("scrim").classList.contains("show")){ showHelp(false); return; }
+      if(search.open){ closeSearch(); return; }
+      if(state.tool !== "read"){ setTool("read"); return; }                  // highlighter / marker / snip / erase → back to read
+      return;
+    }
     // arrow keys / PageUp-Down / Space / Home / End scroll WITHIN the active document
     const ab = state.active && state.active.body;
     if(ab){
@@ -1237,8 +1245,39 @@
     }
   });
 
-  // ---- PWA: service worker + OS file handling (open PDFs from the desktop) ----
-  if("serviceWorker" in navigator){ window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").catch(()=>{})); }
+  // ---- PWA: service worker (auto-update) + OS file handling (open PDFs from the desktop) ----
+  if("serviceWorker" in navigator){
+    const _hadController = !!navigator.serviceWorker.controller;               // false only on the very first (uncontrolled) load
+    let _swReloaded = false, _consented = false, _lastOffer = 0;
+    const reloadNow = ()=>{ if(_swReloaded) return; _swReloaded = true; location.reload(); };
+    navigator.serviceWorker.addEventListener("controllerchange", ()=>{
+      if(!_hadController) return;                                              // skip the first-ever claim (fresh install) → no spurious reload
+      // clients.claim() fires this in EVERY open tab. Reload silently only if we consented here or have nothing open;
+      // otherwise (a sibling tab triggered the update while we hold open PDFs) ask first — never yank an active session.
+      if(_consented || state.docs.length === 0){ reloadNow(); return; }
+      toast("Updated in another window — click to reload here (open PDFs will close)", 600000, ()=>{ _consented = true; reloadNow(); });
+    });
+    const applyUpdate = (reg)=>{
+      const w = reg.waiting; if(!w) return;
+      if(state.docs.length === 0){ w.postMessage({type:"SKIP_WAITING"}); return; }   // nothing open → update silently right now
+      if(Date.now() - _lastOffer < 50000) return;                             // otherwise offer, but don't nag more than ~once/min
+      _lastOffer = Date.now();
+      toast("New version ready — click to update (open PDFs will close)", 12000, ()=>{ _consented = true; w.postMessage({type:"SKIP_WAITING"}); });
+    };
+    window.addEventListener("load", ()=>{
+      navigator.serviceWorker.register("sw.js").then(reg=>{
+        const track = (w)=>{ if(!w) return; const chk=()=>{ if(w.state==="installed" && navigator.serviceWorker.controller) applyUpdate(reg); };
+                             chk(); w.addEventListener("statechange", chk); };
+        if(reg.waiting) applyUpdate(reg);                                      // an update already waiting at launch,
+        track(reg.installing);                                                // …or one mid-install when we registered,
+        reg.addEventListener("updatefound", ()=> track(reg.installing));      // …or one that begins installing later
+        const poll = ()=>{ try{ reg.update(); }catch(e){} if(reg.waiting) applyUpdate(reg); };   // re-surface a stranded waiting update
+        setInterval(poll, 60000);                                             // check for a new build every minute,
+        window.addEventListener("focus", poll);                               // on focus,
+        document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) poll(); });   // and when the tab becomes visible
+      }).catch(()=>{});
+    });
+  }
   try{
     if("launchQueue" in window && window.LaunchParams && "files" in LaunchParams.prototype){
       launchQueue.setConsumer(async (params)=>{
