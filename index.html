@@ -66,6 +66,12 @@
     overflow-x:auto;overflow-y:hidden;padding:18px;scroll-behavior:auto;
   }
   .panel{flex:0 0 auto;display:flex;flex-direction:column;height:100%;min-height:0}
+  /* the document you're reading: gold header + gold ring around the scrollable area */
+  .panel.focused .panel-head{background:linear-gradient(180deg,var(--gold),var(--gold-dk));color:#3a2f12}
+  .panel.focused .panel-head .name{color:#3a2f12}
+  .panel.focused .panel-head .name:focus{background:rgba(58,47,18,.14)}
+  .panel.focused .panel-head .x{color:#3a2f12}
+  .panel.focused .panel-body{box-shadow:inset 0 0 0 3px var(--gold)}
   .panel-head{
     flex:0 0 auto;height:30px;display:flex;align-items:center;gap:7px;padding:0 8px;color:#fff;
     border-radius:9px 9px 0 0;background:linear-gradient(180deg,var(--navy-2),var(--navy));
@@ -194,7 +200,8 @@
         <div class="row"><div class="k"><kbd>S</kbd> Snip</div><div>Drag a rectangle → that region is copied to your clipboard</div></div>
         <div class="row"><div class="k"><kbd>E</kbd> Erase / <kbd>V</kbd> Read</div><div>Click a mark to remove it / return to scrolling</div></div>
         <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>Z</kbd></div><div>Undo last mark or erase — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> to redo</div></div>
-        <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>←</kbd> / <kbd>→</kbd></div><div>Jump to the previous / next document</div></div>
+        <div class="row"><div class="k"><kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd></div><div>Step to the next / previous document and center it (the focused doc gets a gold border). Or click a title bar / sidebar entry.</div></div>
+        <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>←</kbd> / <kbd>→</kbd></div><div>Also jumps between documents</div></div>
         <div class="note"><b>.pdfx:</b> “Save .pdfx” merges all documents into one normal PDF (opens anywhere); re-open it here to split back into columns. <i>Annotations are not yet burned into the saved file — use Snip to capture marked-up regions.</i></div>
       </div>
     </div>
@@ -232,9 +239,11 @@
   const DPR = Math.min(window.devicePixelRatio || 1, 2);
   const MAX_CANVAS = 4200;
   const MINZ = 0.1, MAXZ = 8;
-  const HL_W = 15, PEN_W = 2.6;
-  const HL_COLOR = "#ffd400", PEN_COLOR = "#e23b3b";
+  const HL_W = 9, PEN_W = 2.2;
+  const HL_ALPHA = 0.4;
+  const HL_COLOR = "#fdee00", PEN_COLOR = "#e23b3b";
   const TOOL_NAMES = { read:"Read", hl:"Highlighter", pen:"Marker", snip:"Snip", erase:"Erase" };
+  const hlScratch = document.createElement("canvas");  // offscreen layer for flat-color highlighter
 
   const state = { docs:[], zoom:1, tool:"read", seq:0 };
   const deck = $("deck"), emptyEl = $("empty");
@@ -281,7 +290,10 @@
   }
   function highlightActive(){
     const f = state.docs.length ? focusedPanelDoc() : null;
-    for(const d of state.docs) if(d.sideItem) d.sideItem.classList.toggle("active", d===f);
+    for(const d of state.docs){
+      if(d.sideItem) d.sideItem.classList.toggle("active", d===f);
+      if(d.panel) d.panel.classList.toggle("focused", d===f);
+    }
   }
   function updateStatus(){
     const f = state.docs.length ? focusedPanelDoc() : null;
@@ -308,6 +320,7 @@
     const xBtn = el("button",{class:"x", text:"×", title:"Remove"});
     xBtn.addEventListener("click", ()=>removeDoc(d));
     const head = el("div",{class:"panel-head"},[ nameInput, el("span",{class:"count",text:d.pageCount+"p"}), xBtn ]);
+    head.addEventListener("click", e=>{ if(e.target.closest("input")||e.target.closest("button")) return; scrollToDoc(d); }); // click title bar → bring to center
     const body = el("div",{class:"panel-body"});
     const panel = el("div",{class:"panel"},[ head, body ]);
     d.panel = panel; d.body = body;
@@ -456,32 +469,43 @@
     if(p.anno.width!==w || p.anno.height!==h){ p.anno.width=w; p.anno.height=h; }
     drawAnnos(p);
   }
-  function drawAnnos(p, live){
-    layoutAnnoSize(p);
-    const ctx = p.anno.getContext("2d");
-    ctx.clearRect(0,0,p.anno.width,p.anno.height);
-    const all = live ? p.annos.concat([live]) : p.annos;
-    for(const s of all) strokePath(ctx, p, s);
-  }
   function layoutAnnoSize(p){
     const w = Math.max(1, Math.round(p.baseW*state.zoom*DPR));
     const h = Math.max(1, Math.round(p.baseH*state.zoom*DPR));
     if(p.anno.width!==w) p.anno.width=w;
     if(p.anno.height!==h) p.anno.height=h;
   }
-  function strokePath(ctx, p, s){
-    if(!s.points.length) return;
-    const W = p.anno.width, H = p.anno.height;
-    ctx.save();
-    ctx.lineCap="round"; ctx.lineJoin="round";
-    if(s.tool==="hl"){ ctx.globalCompositeOperation="multiply"; ctx.strokeStyle=HL_COLOR; ctx.globalAlpha=0.45; ctx.lineWidth = HL_W*state.zoom*DPR; }
-    else { ctx.globalCompositeOperation="source-over"; ctx.strokeStyle=PEN_COLOR; ctx.globalAlpha=1; ctx.lineWidth = PEN_W*state.zoom*DPR; }
+  function tracePoints(ctx, pts, W, H){
+    if(!pts.length) return;
     ctx.beginPath();
-    ctx.moveTo(s.points[0].nx*W, s.points[0].ny*H);
-    for(let i=1;i<s.points.length;i++) ctx.lineTo(s.points[i].nx*W, s.points[i].ny*H);
-    if(s.points.length===1) ctx.lineTo(s.points[0].nx*W+0.01, s.points[0].ny*H);
+    ctx.moveTo(pts[0].nx*W, pts[0].ny*H);
+    for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].nx*W, pts[i].ny*H);
+    if(pts.length===1) ctx.lineTo(pts[0].nx*W+0.01, pts[0].ny*H);
     ctx.stroke();
-    ctx.restore();
+  }
+  function drawAnnos(p, live){
+    layoutAnnoSize(p);
+    const W = p.anno.width, H = p.anno.height;
+    const ctx = p.anno.getContext("2d");
+    ctx.clearRect(0,0,W,H);
+    const all = live ? p.annos.concat([live]) : p.annos;
+    // Highlighter: paint every stroke OPAQUE onto a scratch layer (so overlapping strokes
+    // stay one flat color), then composite the whole layer once at HL_ALPHA → uniform tint,
+    // never darkens where strokes cross.
+    let hasHL = false; for(const s of all) if(s.tool==="hl"){ hasHL = true; break; }
+    if(hasHL){
+      if(hlScratch.width!==W) hlScratch.width = W;
+      if(hlScratch.height!==H) hlScratch.height = H;
+      const lc = hlScratch.getContext("2d");
+      lc.clearRect(0,0,W,H);
+      lc.globalCompositeOperation="source-over"; lc.globalAlpha=1;
+      lc.strokeStyle=HL_COLOR; lc.lineCap="round"; lc.lineJoin="round"; lc.lineWidth=HL_W*state.zoom*DPR;
+      for(const s of all) if(s.tool==="hl") tracePoints(lc, s.points, W, H);
+      ctx.globalAlpha=HL_ALPHA; ctx.drawImage(hlScratch,0,0); ctx.globalAlpha=1;
+    }
+    // Pen (red marker): opaque, drawn on top
+    ctx.strokeStyle=PEN_COLOR; ctx.lineCap="round"; ctx.lineJoin="round"; ctx.lineWidth=PEN_W*state.zoom*DPR;
+    for(const s of all) if(s.tool==="pen") tracePoints(ctx, s.points, W, H);
   }
 
   function attachDrawHandlers(p){
@@ -575,8 +599,10 @@
   // ===================================================================
   deck.addEventListener("wheel", e=>{
     if(e.ctrlKey || e.metaKey){ e.preventDefault(); zoomAtClient(e.clientX, e.clientY, Math.pow(1.0016, -e.deltaY)); return; }
-    if(e.shiftKey){ e.preventDefault(); deck.scrollLeft += (e.deltaY || e.deltaX); }
-    else if(Math.abs(e.deltaX) > Math.abs(e.deltaY)*1.5){ e.preventDefault(); deck.scrollLeft += e.deltaX; }
+    if(e.shiftKey){ e.preventDefault(); deck.scrollLeft += (e.deltaY || e.deltaX); return; }           // Shift = sideways, anywhere
+    if(Math.abs(e.deltaX) > Math.abs(e.deltaY)*1.2){ e.preventDefault(); deck.scrollLeft += e.deltaX; return; }  // horizontal swipe = sideways
+    if(!e.target.closest(".panel-body")){ e.preventDefault(); deck.scrollLeft += e.deltaY; }           // wheel over background/gaps = sideways
+    // plain vertical wheel inside a document: native independent scroll (read)
   }, { passive:false });
 
   // ===================================================================
@@ -682,6 +708,7 @@
   document.addEventListener("keydown", e=>{
     if(e.target && (e.target.tagName==="INPUT"||e.target.isContentEditable)) return;
     const k=e.key.toLowerCase();
+    if(e.key==="Tab"){ e.preventDefault(); jumpDoc(e.shiftKey ? -1 : 1); return; }   // Tab / Shift+Tab between docs
     if(e.ctrlKey || e.metaKey){
       if(k==="z"){ e.preventDefault(); e.shiftKey ? redo() : undo(); }
       else if(k==="y"){ e.preventDefault(); redo(); }
