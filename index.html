@@ -1001,19 +1001,33 @@
   const search = { open:false, scope:"doc", query:"", matches:[], idx:-1, run:0 };
   const sbEl = $("searchbar"), sInput = $("searchInput");
 
-  // extract a page's text once, with each run's box in normalized 0..1 page coords
+  // measure proportional per-character offsets within a run (0..1 of run width), normalized to the run's
+  // rendered width, so a highlight on a SUBSTRING lands on the real glyphs — not a uniform-width guess
+  const _measCtx = document.createElement("canvas").getContext("2d");
+  function charFractions(str, fam){
+    const n = str.length, cum = new Float32Array(n+1);
+    _measCtx.font = "100px " + (fam || "sans-serif");
+    const w = new Float32Array(n); let total = 0;
+    for(let i=0;i<n;i++){ const cw = _measCtx.measureText(str[i]).width; w[i]=cw; total += cw; }
+    if(total > 0){ let acc=0; for(let i=0;i<n;i++){ acc += w[i]; cum[i+1] = acc/total; } }
+    else { for(let i=0;i<=n;i++) cum[i] = n ? i/n : 0; }   // degenerate (all zero-width) → uniform
+    return cum;
+  }
+  // extract a page's text once, with each run's box in normalized 0..1 page coords + a per-char offset map
   async function ensurePageSearch(p){
     if(p._search) return p._search;
     const page = await p.doc.pdfjs.getPage(p.globalPage);
     const vp = page.getViewport({ scale:1 });
     const tc = await page.getTextContent();
+    const styles = tc.styles || {};
     const items = []; let text = "", raw = "";
     for(const it of tc.items){
       if(!it.str) continue;
       const tx = PDFJS.Util.transform(vp.transform, it.transform);
       const fh = Math.hypot(tx[2], tx[3]) || it.height || 10;
       const x = tx[4], yTop = tx[5] - fh, w = it.width;
-      items.push({ cstart:text.length, len:it.str.length, nx:x/vp.width, ny:yTop/vp.height, nw:w/vp.width, nh:fh/vp.height });
+      const fam = (styles[it.fontName] && styles[it.fontName].fontFamily) || "sans-serif";
+      items.push({ cstart:text.length, len:it.str.length, nx:x/vp.width, ny:yTop/vp.height, nw:w/vp.width, nh:fh/vp.height, cum:charFractions(it.str, fam) });
       text += it.str.toLowerCase() + " "; raw += it.str + " ";
     }
     p._search = { text, raw, items };
@@ -1023,8 +1037,11 @@
     const rects = [];
     for(const it of si.items){
       const iEnd = it.cstart + it.len, s = Math.max(mStart, it.cstart), e = Math.min(mEnd, iEnd);
-      if(e > s && it.len){ const f0=(s-it.cstart)/it.len, f1=(e-it.cstart)/it.len;
-        rects.push({ nx: it.nx + f0*it.nw, ny: it.ny, nw: (f1-f0)*it.nw, nh: it.nh }); }
+      if(e > s && it.len){
+        const a = s - it.cstart, b = e - it.cstart;
+        const f0 = it.cum ? it.cum[a] : a/it.len, f1 = it.cum ? it.cum[b] : b/it.len;   // proportional glyph offsets
+        rects.push({ nx: it.nx + f0*it.nw, ny: it.ny, nw: (f1-f0)*it.nw, nh: it.nh });
+      }
     }
     return rects;
   }
