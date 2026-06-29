@@ -408,6 +408,12 @@
     deck.scrollTo({ left: Math.max(0, target), behavior:"smooth" });
     setTimeout(()=>{ highlightActive(); updateStatus(); }, 80);
   }
+  function centerDocInstant(d){   // like centerDoc but no animation — used during live window resize so the selected doc stays put
+    if(!d || !d.panel) return;
+    updateDeckPadding();
+    const target = d.panel.offsetLeft + d.panel.offsetWidth/2 - deck.clientWidth/2;
+    deck.scrollLeft = Math.max(0, target);
+  }
   function updateDeckPadding(){
     if(state.docs.length <= 1){
       const pw = state.docs[0] ? state.docs[0].panel.offsetWidth : 0;
@@ -633,7 +639,11 @@
     if(w === _deckW && h === _deckH) return;                 // child-only mutation → no feedback loop
     const widthChanged = w !== _deckW;
     _deckW = w; _deckH = h;
-    if(activeOrFocused() && (widthChanged || fitMode === "page")){ applyFit(true); }
+    const d = activeOrFocused();                       // capture the selected doc BEFORE re-fitting
+    if(d && (widthChanged || fitMode === "page")){
+      applyFit(true);
+      centerDocInstant(d);                             // keep the selected doc centered (multi-doc layout would otherwise drift)
+    }
     else { updateDeckPadding(); renderVisible(true); }
     updateStatus();
   }

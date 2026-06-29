@@ -1,4 +1,4 @@
-const CACHE = "pdfcanvas-v27";
+const CACHE = "pdfcanvas-v28";
 const LOCAL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 // NOTE: no skipWaiting() here — a new SW waits until the page tells it to take over (page posts SKIP_WAITING),
 // so we never yank the rug out from under an open session. The page then reloads on controllerchange.
