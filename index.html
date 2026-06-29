@@ -397,7 +397,13 @@
     if(!d) return;
     state.active = d;
     highlightActive(); updateStatus();
+    if(document.body.classList.contains("theater") && fitMode){   // theater shows ONE doc → re-fit THIS doc (docs can differ in page size, so the old doc's zoom is wrong)
+      const z = clamp(fitZoomFor(d, fitMode), MINZ, MAXZ);
+      if(Math.abs(z - state.zoom) > 1e-3) applyZoom(z);
+    }
+    clearTimeout(zoomSettleTimer);    // a smooth-zoom raster queued before the switch is now stale → don't let it double-raster the new doc
     if(center) centerDoc(d);
+    scheduleRender();                 // always paint the newly-selected doc (don't rely on a scroll event firing)
   }
   function scrollToDoc(d){ selectDoc(d, true); }
   // center a column in the reading area — works for the FIRST/LAST doc too, because the deck
@@ -415,9 +421,13 @@
     deck.scrollLeft = Math.max(0, target);
   }
   function updateDeckPadding(){
-    if(state.docs.length <= 1){
-      const pw = state.docs[0] ? state.docs[0].panel.offsetWidth : 0;
-      const pad = Math.max(0, (deck.clientWidth - pw)/2);   // center a lone doc; floor 0 so a full-width page sits flush (no forced margin → no h-scrollbar)
+    // In theater only ONE panel is visible (others display:none), so center THAT panel — never use the multi-doc
+    // branch there (it would read hidden panels' widths → bogus 240px fallback → wildly asymmetric padding).
+    const theater = document.body.classList.contains("theater");
+    if(theater || state.docs.length <= 1){
+      const d = theater ? activeOrFocused() : state.docs[0];
+      const pw = (d && d.panel) ? d.panel.offsetWidth : 0;
+      const pad = Math.max(0, (deck.clientWidth - pw)/2);   // center a lone/theater doc; floor 0 so a full-width page sits flush (no forced margin → no h-scrollbar)
       deck.style.paddingLeft = deck.style.paddingRight = pad + "px"; return;
     }
     const half = deck.clientWidth/2;
@@ -560,7 +570,9 @@
       const vp = page.getViewport({ scale:q, rotation: ((page.rotate||0) + rot) % 360 });
       const tmp = document.createElement("canvas");
       tmp.width = Math.round(vp.width); tmp.height = Math.round(vp.height);
-      await page.render({ canvasContext: tmp.getContext("2d",{alpha:false}), viewport: vp }).promise;
+      if(p._task){ try{ p._task.cancel(); }catch(_){} }
+      p._task = page.render({ canvasContext: tmp.getContext("2d",{alpha:false}), viewport: vp });
+      await p._task.promise; p._task = null;
       const vis = p.canvas;
       vis.width = tmp.width; vis.height = tmp.height;
       vis.getContext("2d",{alpha:false}).drawImage(tmp, 0, 0);
@@ -576,6 +588,7 @@
     }
   }
   function freePage(p){
+    if(p._task){ try{ p._task.cancel(); }catch(_){} p._task = null; }   // abort an in-flight render so it can't "zombie" re-paint a freed page
     p.canvas.width = 0; p.canvas.height = 0;
     p.rendered = false; p.renderedQ = 0;
     if(p.textlayer){ p.textlayer.replaceChildren(); p._textBuilt = false; }
@@ -616,6 +629,7 @@
     const vh = window.innerHeight, vw = window.innerWidth;
     for(const d of state.docs){
       for(const p of d.pages){
+        if(p.el.offsetParent === null){ if(p.rendered) freePage(p); continue; }   // display:none (theater hides non-focused docs) → free, NEVER render hidden pages (a zero rect would otherwise pass "near")
         const r = p.el.getBoundingClientRect();
         const near = r.bottom > -800 && r.top < vh+800 && r.right > -800 && r.left < vw+800;
         const far  = r.bottom < -2400 || r.top > vh+2400 || r.right < -2400 || r.left > vw+2400;
