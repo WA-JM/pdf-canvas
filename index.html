@@ -556,21 +556,31 @@
   // ===================================================================
   //  Zoom (cursor-anchored, works with native scroll)
   // ===================================================================
-  function applyZoom(nz){
+  let zoomSettleTimer = 0;
+  function redrawVisibleAnnos(){
+    const vh=window.innerHeight, vw=window.innerWidth;
+    for(const d of state.docs) for(const p of d.pages){ const r=p.el.getBoundingClientRect();
+      if(r.bottom>-300 && r.top<vh+300 && r.right>-300 && r.left<vw+300) drawAnnos(p); }
+  }
+  function applyZoom(nz, smooth){
     state.zoom = nz;
-    for(const d of state.docs) layoutDoc(d);
+    for(const d of state.docs) layoutDoc(d);     // cheap: page elements resize, existing bitmaps GPU-scale
     updateDeckPadding();
-    $("zoomLbl").textContent = Math.round(nz*100)+"%";
-    renderVisible(true);
-    for(const d of state.docs) for(const p of d.pages) drawAnnos(p);
+    if(smooth){
+      // during a zoom gesture, defer the costly pdf.js re-raster + anno redraw to a "settle"
+      clearTimeout(zoomSettleTimer);
+      zoomSettleTimer = setTimeout(()=>{ renderVisible(true); redrawVisibleAnnos(); }, 140);
+    }else{
+      renderVisible(true); redrawVisibleAnnos();
+    }
     updateStatus();
   }
-  function zoomAtClient(cx, cy, factor){
+  function zoomAtClient(cx, cy, factor, smooth){
     const target = document.elementFromPoint(cx,cy);
     const pageEl = target && target.closest ? target.closest(".page") : null;
     let anchor = null;
     if(pageEl){ const r = pageEl.getBoundingClientRect(); anchor = { pageEl, fx:(cx-r.left)/r.width, fy:(cy-r.top)/r.height }; }
-    applyZoom(clamp(state.zoom*factor, MINZ, MAXZ));
+    applyZoom(clamp(state.zoom*factor, MINZ, MAXZ), smooth);
     if(anchor){
       const r2 = anchor.pageEl.getBoundingClientRect();
       const curX = r2.left + anchor.fx*r2.width, curY = r2.top + anchor.fy*r2.height;
@@ -734,7 +744,7 @@
   //  Wheel: native vertical scroll (independent) · Shift = sideways · Ctrl = zoom
   // ===================================================================
   deck.addEventListener("wheel", e=>{
-    if(e.ctrlKey || e.metaKey){ e.preventDefault(); zoomAtClient(e.clientX, e.clientY, Math.pow(1.0016, -e.deltaY)); return; }
+    if(e.ctrlKey || e.metaKey){ e.preventDefault(); zoomAtClient(e.clientX, e.clientY, Math.pow(1.0016, -e.deltaY), true); return; }   // smooth: defer re-raster
     if(e.shiftKey){ e.preventDefault(); deck.scrollLeft += (e.deltaY || e.deltaX); return; }           // Shift = sideways, anywhere
     if(Math.abs(e.deltaX) > Math.abs(e.deltaY)*1.2){ e.preventDefault(); deck.scrollLeft += e.deltaX; return; }  // horizontal swipe = sideways
     if(!e.target.closest(".panel-body")){ e.preventDefault(); deck.scrollLeft += e.deltaY; }           // wheel over background/gaps = sideways
