@@ -245,7 +245,7 @@
   const TOOL_NAMES = { read:"Read", hl:"Highlighter", pen:"Marker", snip:"Snip", erase:"Erase" };
   const hlScratch = document.createElement("canvas");  // offscreen layer for flat-color highlighter
 
-  const state = { docs:[], zoom:1, tool:"read", seq:0 };
+  const state = { docs:[], zoom:1, tool:"read", seq:0, active:null };
   const deck = $("deck"), emptyEl = $("empty");
 
   // ---- undo / redo history (annotation add + erase, across all docs) ----
@@ -265,13 +265,34 @@
   }
   function jumpDoc(dir){
     if(!state.docs.length) return;
-    let i = state.docs.indexOf(focusedPanelDoc());
+    let i = state.docs.indexOf(state.active);
+    if(i < 0) i = state.docs.indexOf(focusedPanelDoc());
     i = clamp(i + dir, 0, state.docs.length-1);
-    scrollToDoc(state.docs[i]); toast(state.docs[i].name);
+    selectDoc(state.docs[i], true); toast(state.docs[i].name);
   }
-  function scrollToDoc(d){
-    d.panel.scrollIntoView({behavior:"smooth", inline:"center", block:"nearest"});
-    setTimeout(()=>{ highlightActive(); updateStatus(); }, 60);
+  // make d the ACTIVE document — gold border, arrow-key + status target; optionally center it
+  function selectDoc(d, center){
+    if(!d) return;
+    state.active = d;
+    highlightActive(); updateStatus();
+    if(center) centerDoc(d);
+  }
+  function scrollToDoc(d){ selectDoc(d, true); }
+  // center a column in the reading area — works for the FIRST/LAST doc too, because the deck
+  // carries enough side padding to scroll an edge document all the way to the middle.
+  function centerDoc(d){
+    updateDeckPadding();
+    const target = d.panel.offsetLeft + d.panel.offsetWidth/2 - deck.clientWidth/2;
+    deck.scrollTo({ left: Math.max(0, target), behavior:"smooth" });
+    setTimeout(()=>{ highlightActive(); updateStatus(); }, 80);
+  }
+  function updateDeckPadding(){
+    if(!state.docs.length){ deck.style.paddingLeft = deck.style.paddingRight = "18px"; return; }
+    const half = deck.clientWidth/2;
+    const firstW = state.docs[0].panel.offsetWidth || 240;
+    const lastW  = state.docs[state.docs.length-1].panel.offsetWidth || 240;
+    deck.style.paddingLeft  = Math.max(18, half - firstW/2) + "px";
+    deck.style.paddingRight = Math.max(18, half - lastW/2)  + "px";
   }
 
   // ===================================================================
@@ -289,14 +310,15 @@
     highlightActive();
   }
   function highlightActive(){
-    const f = state.docs.length ? focusedPanelDoc() : null;
+    let f = (state.active && state.docs.indexOf(state.active)>=0) ? state.active : (state.docs[0] || null);
+    state.active = f;
     for(const d of state.docs){
       if(d.sideItem) d.sideItem.classList.toggle("active", d===f);
       if(d.panel) d.panel.classList.toggle("focused", d===f);
     }
   }
   function updateStatus(){
-    const f = state.docs.length ? focusedPanelDoc() : null;
+    const f = (state.active && state.docs.indexOf(state.active)>=0) ? state.active : (state.docs[0] || null);
     $("stDoc").textContent = f ? f.name : "No document";
     $("stZoom").textContent = Math.round(state.zoom*100)+"%";
     $("stTool").textContent = TOOL_NAMES[state.tool] || state.tool;
@@ -323,7 +345,7 @@
     head.addEventListener("click", e=>{ if(e.target.closest("input")||e.target.closest("button")) return; scrollToDoc(d); }); // click title bar → bring to center
     const body = el("div",{class:"panel-body"});
     const panel = el("div",{class:"panel"},[ head, body ]);
-    d.panel = panel; d.body = body;
+    d.panel = panel; d.body = body; body._doc = d;
 
     for(let i=0;i<d.pageCount;i++){
       const gp = d.pageStart + i + 1;
@@ -345,7 +367,7 @@
     deck.appendChild(panel);
     state.docs.push(d);
     layoutDoc(d);
-    refreshEmpty(); rebuildSidebar(); updateStatus();
+    refreshEmpty(); rebuildSidebar(); updateStatus(); updateDeckPadding();
     return d;
   }
 
@@ -359,9 +381,10 @@
 
   function removeDoc(d){
     state.docs = state.docs.filter(x=>x!==d);
+    if(state.active===d) state.active = null;
     for(const p of d.pages) freePage(p);
     d.panel.remove();
-    refreshEmpty(); rebuildSidebar(); updateStatus(); scheduleRender();
+    refreshEmpty(); rebuildSidebar(); updateStatus(); updateDeckPadding(); scheduleRender();
   }
   function refreshEmpty(){ emptyEl.style.display = state.docs.length ? "none" : "flex"; }
 
@@ -415,8 +438,12 @@
       }
     }
   }
-  deck.addEventListener("scroll", scheduleRender, true);
-  window.addEventListener("resize", ()=>{ renderVisible(true); updateStatus(); });
+  deck.addEventListener("scroll", e=>{
+    const t = e.target;
+    if(t && t.classList && t.classList.contains("panel-body") && t._doc) state.active = t._doc;  // scrolling a doc selects it
+    scheduleRender();
+  }, true);
+  window.addEventListener("resize", ()=>{ updateDeckPadding(); renderVisible(true); updateStatus(); });
 
   // ===================================================================
   //  Zoom (cursor-anchored, works with native scroll)
@@ -424,6 +451,7 @@
   function applyZoom(nz){
     state.zoom = nz;
     for(const d of state.docs) layoutDoc(d);
+    updateDeckPadding();
     $("zoomLbl").textContent = Math.round(nz*100)+"%";
     renderVisible(true);
     for(const d of state.docs) for(const p of d.pages) drawAnnos(p);
@@ -454,7 +482,7 @@
     return best || state.docs[0];
   }
   function fitWidth(){
-    const d = focusedPanelDoc(); if(!d) return;
+    const d = (state.active && state.docs.indexOf(state.active)>=0) ? state.active : focusedPanelDoc(); if(!d) return;
     const avail = deck.clientWidth - 60;
     applyZoom(clamp(avail / d.maxW, MINZ, MAXZ));
     scrollToDoc(d);
@@ -717,6 +745,17 @@
       return;
     }
     if(e.key==="Escape"){ showHelp(false); return; }
+    // arrow keys / PageUp-Down / Space / Home / End scroll WITHIN the active document
+    const ab = state.active && state.active.body;
+    if(ab){
+      if(e.key==="ArrowDown"){ e.preventDefault(); ab.scrollBy({top:90}); return; }
+      if(e.key==="ArrowUp"){ e.preventDefault(); ab.scrollBy({top:-90}); return; }
+      if(e.key==="PageDown"){ e.preventDefault(); ab.scrollBy({top:ab.clientHeight*0.9}); return; }
+      if(e.key==="PageUp"){ e.preventDefault(); ab.scrollBy({top:-ab.clientHeight*0.9}); return; }
+      if(e.key===" "){ e.preventDefault(); ab.scrollBy({top:(e.shiftKey?-1:1)*ab.clientHeight*0.9}); return; }
+      if(e.key==="Home"){ e.preventDefault(); ab.scrollTo({top:0}); return; }
+      if(e.key==="End"){ e.preventDefault(); ab.scrollTo({top:ab.scrollHeight}); return; }
+    }
     if(k==="v") setTool("read"); else if(k==="h") setTool("hl"); else if(k==="m") setTool("pen");
     else if(k==="s") setTool("snip"); else if(k==="e") setTool("erase");
     else if(k==="+"||k==="=") zoomCenter(1.25);
