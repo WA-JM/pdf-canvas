@@ -115,6 +115,24 @@
   #empty .cta button{font-size:14px;padding:10px 18px}
   #deck.dropping::after{content:"";position:absolute;inset:10px;border:3px dashed var(--gold);border-radius:18px;background:rgba(197,165,90,.08);pointer-events:none;z-index:40}
 
+  /* ---------------- Search bar ---------------- */
+  .searchbar{position:fixed;top:60px;right:16px;z-index:55;display:none;align-items:center;gap:6px;
+    background:rgba(255,255,255,.94);backdrop-filter:blur(14px) saturate(1.4);-webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--line);box-shadow:0 10px 30px rgba(26,46,74,.24);border-radius:12px;padding:6px 8px}
+  .searchbar.show{display:flex}
+  .searchbar .sb-ico{font-size:13px;opacity:.7;padding:0 2px}
+  .searchbar input{border:1px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;font-size:13px;width:210px;outline:none;color:var(--ink)}
+  .searchbar input:focus{border-color:var(--gold);box-shadow:0 0 0 2px rgba(197,165,90,.25)}
+  .sb-count{font-size:12px;font-weight:600;color:var(--muted);min-width:50px;text-align:center}
+  .sb-btn{border:1px solid transparent;background:transparent;border-radius:7px;padding:5px 8px;cursor:pointer;font:inherit;font-size:14px;color:var(--navy);line-height:1}
+  .sb-btn:hover{background:rgba(26,46,74,.08)}
+  .sb-scope{display:flex;gap:2px;background:rgba(26,46,74,.05);border-radius:8px;padding:2px}
+  .sb-tab{border:none;background:transparent;border-radius:6px;padding:4px 9px;font:inherit;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer}
+  .sb-tab.active{background:#fff;box-shadow:0 1px 3px rgba(26,46,74,.18)}
+  /* search match boxes — percentage-positioned over the page, scale with zoom */
+  .shl{position:absolute;background:rgba(255,212,0,.45);border-radius:1px;pointer-events:none;mix-blend-mode:multiply;z-index:4}
+  .shl.current{background:rgba(255,138,0,.62);box-shadow:0 0 0 1.5px rgba(190,85,0,.8)}
+
   /* ---------------- Toast + help ---------------- */
   #toast{position:fixed;bottom:38px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--navy);color:#fff;font-size:13px;font-weight:600;padding:11px 18px;border-radius:11px;box-shadow:0 10px 30px rgba(26,46,74,.35);z-index:80;transition:opacity .2s,transform .2s;pointer-events:none;max-width:80vw}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -186,6 +204,19 @@
     <span>Tool <b id="stTool">Read</b></span>
   </footer>
 
+  <div class="searchbar" id="searchbar">
+    <span class="sb-ico">🔎</span>
+    <input id="searchInput" type="text" placeholder="Search…" spellcheck="false" autocomplete="off">
+    <span class="sb-count" id="searchCount">0/0</span>
+    <button class="sb-btn" id="searchPrev" title="Previous (Shift+Enter)">↑</button>
+    <button class="sb-btn" id="searchNext" title="Next (Enter)">↓</button>
+    <div class="sb-scope" id="searchScope">
+      <button class="sb-tab active" data-scope="doc" title="Search the active document (Ctrl+F)">This doc</button>
+      <button class="sb-tab" data-scope="all" title="Search every open document (Ctrl+Shift+F)">All docs</button>
+    </div>
+    <button class="sb-btn close" id="searchClose" title="Close (Esc)">×</button>
+  </div>
+
   <input type="file" id="fileInput" accept=".pdf,.pdfx,application/pdf" multiple style="display:none">
   <div id="toast"></div>
 
@@ -202,6 +233,8 @@
         <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>Z</kbd></div><div>Undo last mark or erase — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> to redo</div></div>
         <div class="row"><div class="k"><kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd></div><div>Step to the next / previous document and center it (the focused doc gets a gold border). Or click a title bar / sidebar entry.</div></div>
         <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>←</kbd> / <kbd>→</kbd></div><div>Also jumps between documents</div></div>
+        <div class="row"><div class="k"><kbd>↑</kbd> <kbd>↓</kbd> / <kbd>PgUp</kbd> <kbd>PgDn</kbd></div><div>Scroll within the selected document (also Space, Home/End)</div></div>
+        <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>F</kbd></div><div>Find in the active document — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> searches all documents. Enter / Shift+Enter step through hits.</div></div>
         <div class="note"><b>.pdfx:</b> “Save .pdfx” merges all documents into one normal PDF (opens anywhere); re-open it here to split back into columns. <i>Annotations are not yet burned into the saved file — use Snip to capture marked-up regions.</i></div>
       </div>
     </div>
@@ -734,6 +767,7 @@
   $("btnHelpX").onclick=()=>showHelp(false);
   $("scrim").addEventListener("click", e=>{ if(e.target===$("scrim")) showHelp(false); });
   document.addEventListener("keydown", e=>{
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="f"){ e.preventDefault(); openSearch(e.shiftKey ? "all" : "doc"); return; }
     if(e.target && (e.target.tagName==="INPUT"||e.target.isContentEditable)) return;
     const k=e.key.toLowerCase();
     if(e.key==="Tab"){ e.preventDefault(); jumpDoc(e.shiftKey ? -1 : 1); return; }   // Tab / Shift+Tab between docs
@@ -744,7 +778,7 @@
       else if(e.key==="ArrowLeft"){ e.preventDefault(); jumpDoc(-1); }
       return;
     }
-    if(e.key==="Escape"){ showHelp(false); return; }
+    if(e.key==="Escape"){ showHelp(false); if(search.open) closeSearch(); return; }
     // arrow keys / PageUp-Down / Space / Home / End scroll WITHIN the active document
     const ab = state.active && state.active.body;
     if(ab){
@@ -761,6 +795,105 @@
     else if(k==="+"||k==="=") zoomCenter(1.25);
     else if(k==="-") zoomCenter(0.8);
   });
+
+  // ===================================================================
+  //  Full-text search — Ctrl+F (active doc) · Ctrl+Shift+F (all docs)
+  // ===================================================================
+  const search = { open:false, scope:"doc", query:"", matches:[], idx:-1, run:0 };
+  const sbEl = $("searchbar"), sInput = $("searchInput");
+
+  // extract a page's text once, with each run's box in normalized 0..1 page coords
+  async function ensurePageSearch(p){
+    if(p._search) return p._search;
+    const page = await p.doc.pdfjs.getPage(p.globalPage);
+    const vp = page.getViewport({ scale:1 });
+    const tc = await page.getTextContent();
+    const items = []; let text = "";
+    for(const it of tc.items){
+      if(!it.str) continue;
+      const tx = PDFJS.Util.transform(vp.transform, it.transform);
+      const fh = Math.hypot(tx[2], tx[3]) || it.height || 10;
+      const x = tx[4], yTop = tx[5] - fh, w = it.width;
+      items.push({ cstart:text.length, len:it.str.length, nx:x/vp.width, ny:yTop/vp.height, nw:w/vp.width, nh:fh/vp.height });
+      text += it.str.toLowerCase() + " ";
+    }
+    p._search = { text, items };
+    return p._search;
+  }
+  function matchRects(si, mStart, mEnd){
+    const rects = [];
+    for(const it of si.items){
+      const iEnd = it.cstart + it.len, s = Math.max(mStart, it.cstart), e = Math.min(mEnd, iEnd);
+      if(e > s && it.len){ const f0=(s-it.cstart)/it.len, f1=(e-it.cstart)/it.len;
+        rects.push({ nx: it.nx + f0*it.nw, ny: it.ny, nw: (f1-f0)*it.nw, nh: it.nh }); }
+    }
+    return rects;
+  }
+  function clearSearchHighlights(){ for(const m of search.matches){ if(m._els) for(const e of m._els) e.remove(); } }
+  function renderSearchHighlights(){
+    for(const m of search.matches){ m._els = [];
+      for(const r of m.rects){ const e = el("div",{class:"shl"});
+        e.style.left=(r.nx*100)+"%"; e.style.top=(r.ny*100)+"%"; e.style.width=(r.nw*100)+"%"; e.style.height=(Math.max(r.nh,0.006)*100)+"%";
+        m.page.el.appendChild(e); m._els.push(e); } }
+    markCurrent();
+  }
+  function markCurrent(){ search.matches.forEach((m,i)=>{ if(m._els) for(const e of m._els) e.classList.toggle("current", i===search.idx); }); }
+  function updateSearchCount(){ $("searchCount").textContent = search.matches.length ? (search.idx+1)+"/"+search.matches.length : "0/0"; }
+
+  async function runSearch(){
+    const my = ++search.run;
+    const q = (search.query||"").trim().toLowerCase();
+    clearSearchHighlights(); search.matches = []; search.idx = -1;
+    if(!q){ updateSearchCount(); return; }
+    const docs = search.scope==="all" ? state.docs : (state.active ? [state.active] : []);
+    const found = [];
+    outer: for(const d of docs){ for(const p of d.pages){
+      const si = await ensurePageSearch(p);
+      if(my !== search.run) return;                 // a newer search superseded this one
+      let from = 0, hit;
+      while((hit = si.text.indexOf(q, from)) !== -1){
+        const rects = matchRects(si, hit, hit + q.length);
+        if(rects.length) found.push({ doc:d, page:p, rects });
+        from = hit + Math.max(1, q.length);
+        if(found.length > 1000) break outer;
+      }
+    } }
+    search.matches = found;
+    renderSearchHighlights();
+    if(found.length){ search.idx = 0; gotoMatch(0); }
+    updateSearchCount();
+  }
+  function gotoMatch(i){
+    if(!search.matches.length) return;
+    search.idx = (i + search.matches.length) % search.matches.length;
+    const m = search.matches[search.idx];
+    if(!m.page.el.isConnected) return;
+    markCurrent();
+    selectDoc(m.doc, true);                          // center the doc horizontally
+    const bodyRect = m.doc.body.getBoundingClientRect(), pageRect = m.page.el.getBoundingClientRect();
+    const matchY = m.doc.body.scrollTop + (pageRect.top - bodyRect.top) + m.rects[0].ny * pageRect.height;
+    m.doc.body.scrollTop = Math.max(0, matchY - m.doc.body.clientHeight/2);   // bring the hit into view
+    updateSearchCount();
+  }
+  function openSearch(scope){
+    search.open = true; if(scope) search.scope = scope;
+    sbEl.classList.add("show");
+    for(const t of document.querySelectorAll(".sb-tab")) t.classList.toggle("active", t.dataset.scope===search.scope);
+    sInput.focus(); sInput.select();
+    if(search.query) runSearch();
+  }
+  function closeSearch(){ search.open=false; sbEl.classList.remove("show"); clearSearchHighlights(); search.matches=[]; search.idx=-1; }
+
+  let searchTimer = 0;
+  sInput.addEventListener("input", ()=>{ search.query = sInput.value; clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 170); });
+  sInput.addEventListener("keydown", e=>{
+    if(e.key==="Enter"){ e.preventDefault(); gotoMatch(search.idx + (e.shiftKey ? -1 : 1)); }
+    else if(e.key==="Escape"){ e.preventDefault(); closeSearch(); }
+  });
+  $("searchNext").onclick = ()=>gotoMatch(search.idx+1);
+  $("searchPrev").onclick = ()=>gotoMatch(search.idx-1);
+  $("searchClose").onclick = closeSearch;
+  for(const t of document.querySelectorAll(".sb-tab")) t.addEventListener("click", ()=>{ search.scope=t.dataset.scope; for(const x of document.querySelectorAll(".sb-tab")) x.classList.toggle("active", x===t); sInput.focus(); runSearch(); });
 
   // ---- PWA: service worker + OS file handling (open PDFs from the desktop) ----
   if("serviceWorker" in navigator){ window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").catch(()=>{})); }
