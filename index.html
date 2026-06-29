@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF Canvas — Watchtower</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1a2e4a">
+<style>
+  :root{
+    --navy:#1a2e4a; --navy-2:#24406b; --gold:#c5a55a; --gold-dk:#a8893f;
+    --bg:#e9ebef; --card:#ffffff; --ink:#1a2e4a; --muted:#5b6b82;
+    --line:#d4d9e0; --shadow:0 2px 10px rgba(26,46,74,.13),0 12px 30px rgba(26,46,74,.08);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);overflow:hidden}
+  body{background:var(--bg);display:flex;flex-direction:column}
+
+  /* ---------------- App shell: toolbar / [sidebar | stage] / statusbar ---------------- */
+  .appbar{
+    flex:0 0 auto;display:flex;align-items:center;gap:5px;z-index:30;height:52px;padding:0 12px;
+    background:linear-gradient(180deg,#ffffff,#f1f4f8);border-bottom:1px solid var(--line);
+    box-shadow:0 1px 2px rgba(26,46,74,.05);overflow-x:auto;overflow-y:hidden;
+  }
+  .appbody{flex:1 1 auto;display:flex;min-height:0}
+  .sidebar{flex:0 0 220px;display:flex;flex-direction:column;min-height:0;background:#f4f6f9;border-right:1px solid var(--line)}
+  .side-head{flex:0 0 auto;padding:11px 14px 7px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .doc-list{flex:1 1 auto;overflow-y:auto;min-height:0;padding-bottom:8px}
+  .doc-item{display:flex;align-items:center;gap:9px;padding:8px 13px;cursor:pointer;border-left:3px solid transparent;font-size:13px;color:var(--ink)}
+  .doc-item:hover{background:rgba(26,46,74,.06)}
+  .doc-item.active{background:#fff;border-left-color:var(--gold);font-weight:600;box-shadow:inset -1px 0 0 var(--line)}
+  .doc-item .ic{width:17px;height:21px;border-radius:2px;background:#fff;border:1px solid var(--line);flex:none;position:relative}
+  .doc-item .ic::before{content:"";position:absolute;left:0;right:0;top:0;height:5px;border-radius:1px 1px 0 0;background:var(--navy-2)}
+  .doc-item .nm{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .doc-item .pc{flex:none;color:var(--muted);font-size:11px}
+  .stage{flex:1 1 auto;position:relative;min-width:0;background:var(--bg)}
+  .statusbar{flex:0 0 auto;height:25px;display:flex;align-items:center;gap:16px;padding:0 14px;background:linear-gradient(180deg,#f4f6f9,#eaedf2);border-top:1px solid var(--line);font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden}
+  .statusbar b{color:var(--navy);font-weight:600}
+
+  .brand{display:flex;align-items:center;gap:8px;padding:0 8px 0 2px;font-weight:700;font-size:14.5px;color:var(--navy)}
+  .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 3px rgba(197,165,90,.22)}
+  .sep{width:1px;align-self:center;height:26px;background:var(--line);margin:0 4px}
+  button.tb{
+    appearance:none;border:1px solid transparent;background:transparent;color:var(--navy);
+    font:inherit;font-size:13px;font-weight:600;padding:7px 10px;border-radius:9px;cursor:pointer;white-space:nowrap;
+    display:inline-flex;align-items:center;gap:6px;transition:background .12s,border-color .12s,color .12s;
+  }
+  button.tb:hover{background:rgba(26,46,74,.07)}
+  button.tb.primary{background:var(--navy);color:#fff}
+  button.tb.primary:hover{background:var(--navy-2)}
+  button.tb.gold{background:var(--gold);color:#3a2f12}
+  button.tb.gold:hover{background:var(--gold-dk);color:#fff}
+  button.tb.icon{padding:7px 9px;font-size:15px;min-width:32px;justify-content:center}
+  .tools{display:flex;gap:2px;background:rgba(26,46,74,.05);border-radius:10px;padding:2px}
+  button.tool{border:1px solid transparent;background:transparent;border-radius:8px;padding:6px 9px;font:inherit;font-size:13px;font-weight:600;color:var(--navy);cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+  button.tool:hover{background:rgba(26,46,74,.08)}
+  button.tool.active{background:#fff;box-shadow:0 1px 4px rgba(26,46,74,.18);color:var(--navy)}
+  button.tool .sw{width:12px;height:12px;border-radius:3px;display:inline-block}
+  .zoomwrap{display:flex;align-items:center;gap:2px;background:rgba(26,46,74,.05);border-radius:10px;padding:2px}
+  .zoomlbl{font-size:12.5px;font-weight:700;color:var(--navy);min-width:48px;text-align:center;cursor:pointer;user-select:none}
+  .spacer{flex:1 1 auto}
+
+  /* ---------------- Deck: horizontal strip of document columns ---------------- */
+  #deck{
+    position:absolute;inset:0;display:flex;flex-direction:row;align-items:stretch;gap:18px;
+    overflow-x:auto;overflow-y:hidden;padding:18px;scroll-behavior:auto;
+  }
+  .panel{flex:0 0 auto;display:flex;flex-direction:column;height:100%;min-height:0}
+  .panel-head{
+    flex:0 0 auto;height:30px;display:flex;align-items:center;gap:7px;padding:0 8px;color:#fff;
+    border-radius:9px 9px 0 0;background:linear-gradient(180deg,var(--navy-2),var(--navy));
+    box-shadow:0 2px 8px rgba(26,46,74,.22);font-size:12.5px;font-weight:600;
+  }
+  .panel-head .name{background:transparent;border:none;color:#fff;font:inherit;font-weight:700;padding:2px 3px;border-radius:4px;min-width:30px;flex:1 1 auto;text-overflow:ellipsis}
+  .panel-head .name:focus{outline:none;background:rgba(255,255,255,.18)}
+  .panel-head .count{opacity:.78;flex:none}
+  .panel-head .x{border:none;background:transparent;color:#fff;opacity:.7;cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;border-radius:5px;flex:none}
+  .panel-head .x:hover{opacity:1;background:rgba(255,80,80,.35)}
+  .panel-body{
+    flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
+    background:#dfe3e9;border-radius:0 0 9px 9px;padding:12px;
+    display:flex;flex-direction:column;align-items:center;gap:14px;scrollbar-width:thin;
+  }
+  .panel-body::-webkit-scrollbar{width:11px}
+  .panel-body::-webkit-scrollbar-thumb{background:rgba(26,46,74,.28);border-radius:6px;border:3px solid #dfe3e9}
+  .panel-body::-webkit-scrollbar-thumb:hover{background:rgba(26,46,74,.45)}
+
+  .page{position:relative;background:var(--card);box-shadow:var(--shadow);border-radius:2px;flex:0 0 auto}
+  .page .pg{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:2px}
+  .page .anno{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;touch-action:none}
+  .page .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#c2cad6;font-size:12px}
+  .page .pgnum{position:absolute;right:6px;bottom:5px;background:rgba(26,46,74,.6);color:#fff;font-size:10px;font-weight:600;padding:1px 6px;border-radius:8px;pointer-events:none}
+  .page .marquee{position:absolute;border:1.5px dashed var(--navy);background:rgba(26,46,74,.10);pointer-events:none;z-index:5}
+
+  body[data-tool="hl"] .anno,
+  body[data-tool="pen"] .anno,
+  body[data-tool="snip"] .anno,
+  body[data-tool="erase"] .anno{pointer-events:auto;cursor:crosshair}
+  body[data-tool="hl"] .anno{cursor:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyOCIgaGVpZ2h0PSIyOCIgdmlld0JveD0iMCAwIDI4IDI4Ij48cmVjdCB4PSIxMCIgeT0iMiIgd2lkdGg9IjgiIGhlaWdodD0iMTUiIHJ4PSIyIiBmaWxsPSIjZmZkNDAwIiBzdHJva2U9IiM4YTZmMmUiIHN0cm9rZS13aWR0aD0iMS4zIi8+PHBhdGggZD0iTTEwIDE3IEwxNCAyNiBMMTggMTcgWiIgZmlsbD0iI2ZmZjBhMCIgc3Ryb2tlPSIjOGE2ZjJlIiBzdHJva2Utd2lkdGg9IjEuMyIvPjwvc3ZnPg==") 14 25, crosshair}
+  body[data-tool="pen"] .anno{cursor:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyOCIgaGVpZ2h0PSIyOCIgdmlld0JveD0iMCAwIDI4IDI4Ij48cmVjdCB4PSIxMCIgeT0iMiIgd2lkdGg9IjgiIGhlaWdodD0iMTMiIHJ4PSIyIiBmaWxsPSIjZTIzYjNiIiBzdHJva2U9IiM3YTFkMWQiIHN0cm9rZS13aWR0aD0iMS4zIi8+PHBhdGggZD0iTTEwIDE1IEwxNCAyNiBMMTggMTUgWiIgZmlsbD0iI2YzYTBhMCIgc3Ryb2tlPSIjN2ExZDFkIiBzdHJva2Utd2lkdGg9IjEuMyIvPjxjaXJjbGUgY3g9IjE0IiBjeT0iMjMuNSIgcj0iMS4zIiBmaWxsPSIjN2ExZDFkIi8+PC9zdmc+") 14 25, crosshair}
+  body[data-tool="erase"] .anno{cursor:cell}
+
+  /* ---------------- Empty state ---------------- */
+  #empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;text-align:center;pointer-events:none;padding:20px}
+  #empty .big{font-size:42px}
+  #empty h2{margin:0;font-size:20px;color:var(--navy)}
+  #empty p{margin:0;color:var(--muted);font-size:14px;max-width:460px;line-height:1.55}
+  #empty .cta{pointer-events:auto;display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;justify-content:center}
+  #empty .cta button{font-size:14px;padding:10px 18px}
+  #deck.dropping::after{content:"";position:absolute;inset:10px;border:3px dashed var(--gold);border-radius:18px;background:rgba(197,165,90,.08);pointer-events:none;z-index:40}
+
+  /* ---------------- Toast + help ---------------- */
+  #toast{position:fixed;bottom:38px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--navy);color:#fff;font-size:13px;font-weight:600;padding:11px 18px;border-radius:11px;box-shadow:0 10px 30px rgba(26,46,74,.35);z-index:80;transition:opacity .2s,transform .2s;pointer-events:none;max-width:80vw}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #scrim{position:fixed;inset:0;background:rgba(26,46,74,.4);backdrop-filter:blur(3px);z-index:90;display:none;align-items:center;justify-content:center;padding:20px}
+  #scrim.show{display:flex}
+  .modal{background:#fff;border-radius:16px;max-width:540px;width:100%;box-shadow:0 24px 60px rgba(26,46,74,.4);overflow:hidden}
+  .modal h3{margin:0;padding:18px 22px;background:linear-gradient(180deg,var(--navy-2),var(--navy));color:#fff;font-size:16px;display:flex;justify-content:space-between;align-items:center}
+  .modal h3 button{border:none;background:transparent;color:#fff;font-size:20px;cursor:pointer;opacity:.8}
+  .modal .body{padding:16px 22px;font-size:13.5px;line-height:1.55;color:#33425a}
+  .modal kbd{background:#eef1f5;border:1px solid #d4d9e0;border-bottom-width:2px;border-radius:6px;padding:1px 7px;font:inherit;font-size:12px;font-weight:700;color:var(--navy)}
+  .modal .row{display:flex;gap:10px;padding:6px 0;border-bottom:1px solid #eef1f5}
+  .modal .row:last-child{border-bottom:none}
+  .modal .row .k{flex:0 0 165px}
+  .modal .note{margin-top:12px;padding:11px 14px;background:#f6f4ec;border:1px solid #ece3cc;border-radius:10px;font-size:12.5px;color:#6b5a2e}
+</style>
+</head>
+<body data-tool="read">
+
+  <header class="appbar" id="toolbar">
+    <div class="brand"><span class="dot"></span>PDF Canvas</div>
+    <button class="tb primary" id="btnOpen">＋ Open</button>
+    <button class="tb" id="btnDemo">Demo</button>
+    <div class="sep"></div>
+    <div class="tools" id="toolGroup">
+      <button class="tool active" data-t="read" id="tRead" title="Read / scroll (V)">✋ Read</button>
+      <button class="tool" data-t="hl" id="tHl" title="Highlighter (H)"><span class="sw" style="background:#ffd400"></span>Highlight</button>
+      <button class="tool" data-t="pen" id="tPen" title="Red marker (M)"><span class="sw" style="background:#e23b3b"></span>Marker</button>
+      <button class="tool" data-t="snip" id="tSnip" title="Snip a region to clipboard (S)">⛶ Snip</button>
+      <button class="tool" data-t="erase" id="tErase" title="Erase annotations (E)">⌫ Erase</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="tb gold" id="btnFitW" title="Fit the focused document to width">Fit width</button>
+    <div class="zoomwrap">
+      <button class="tb icon" id="btnZoomOut" title="Zoom out">−</button>
+      <span class="zoomlbl" id="zoomLbl" title="Reset to 100%">100%</span>
+      <button class="tb icon" id="btnZoomIn" title="Zoom in">＋</button>
+    </div>
+    <div class="sep"></div>
+    <button class="tb" id="btnSave" title="Save all documents as one .pdfx">Save .pdfx</button>
+    <button class="tb icon" id="btnHelp" title="Help">?</button>
+  </header>
+
+  <div class="appbody">
+    <aside class="sidebar">
+      <div class="side-head">Documents</div>
+      <div class="doc-list" id="docList"></div>
+    </aside>
+    <main class="stage">
+      <div id="deck">
+        <div id="empty">
+          <div class="big">🗂️</div>
+          <h2>Drop your PDFs here</h2>
+          <p>Each document gets its own column that <b>scrolls on its own</b>. Read one by scrolling it; scroll sideways (or Shift-scroll) to reach the others. Highlight, mark up in red, or snip any region to your clipboard.</p>
+          <div class="cta">
+            <button class="tb primary" id="btnOpen2">＋ Open PDFs</button>
+            <button class="tb" id="btnDemo2">Load a demo</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <footer class="statusbar">
+    <span>📄 <b id="stDoc">No document</b></span>
+    <span id="stPage"></span>
+    <div class="spacer"></div>
+    <span id="stCount"></span>
+    <span>Zoom <b id="stZoom">100%</b></span>
+    <span>Tool <b id="stTool">Read</b></span>
+  </footer>
+
+  <input type="file" id="fileInput" accept=".pdf,.pdfx,application/pdf" multiple style="display:none">
+  <div id="toast"></div>
+
+  <div id="scrim">
+    <div class="modal">
+      <h3>PDF Canvas — help <button id="btnHelpX">×</button></h3>
+      <div class="body">
+        <div class="row"><div class="k"><kbd>Scroll</kbd></div><div>Read up/down within a document — <b>each column scrolls independently</b></div></div>
+        <div class="row"><div class="k"><kbd>Shift</kbd>+Scroll</div><div>Move sideways between documents</div></div>
+        <div class="row"><div class="k"><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+Scroll</div><div>Zoom toward your cursor</div></div>
+        <div class="row"><div class="k"><kbd>H</kbd> / <kbd>M</kbd></div><div>Highlighter / red marker — drag to draw</div></div>
+        <div class="row"><div class="k"><kbd>S</kbd> Snip</div><div>Drag a rectangle → that region is copied to your clipboard</div></div>
+        <div class="row"><div class="k"><kbd>E</kbd> Erase / <kbd>V</kbd> Read</div><div>Click a mark to remove it / return to scrolling</div></div>
+        <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>Z</kbd></div><div>Undo last mark or erase — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> to redo</div></div>
+        <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>←</kbd> / <kbd>→</kbd></div><div>Jump to the previous / next document</div></div>
+        <div class="note"><b>.pdfx:</b> “Save .pdfx” merges all documents into one normal PDF (opens anywhere); re-open it here to split back into columns. <i>Annotations are not yet burned into the saved file — use Snip to capture marked-up regions.</i></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <script>
+  "use strict";
+  /* ===================================================================
+     PDF Canvas v2 — independent-scroll multi-PDF reader, app-shell UI.
+     Horizontal strip (#deck) of native overflow-y panels → each document
+     scrolls on its own; the browser never blanks a canvas mid-scroll.
+     Re-rasterize-on-zoom via offscreen swap = no flash. Left sidebar lists
+     docs; bottom status bar tracks the focused doc/page/zoom/tool.
+  =================================================================== */
+
+  function el(tag, props, kids){
+    const n = document.createElement(tag);
+    if(props) for(const k in props){
+      if(k==="class") n.className=props[k];
+      else if(k==="text") n.textContent=props[k];
+      else if(k.slice(0,2)==="on") n.addEventListener(k.slice(2), props[k]);
+      else n.setAttribute(k, props[k]);
+    }
+    if(kids) for(const c of kids) if(c) n.appendChild(c);
+    return n;
+  }
+  const $ = id => document.getElementById(id);
+  const clamp = (v,a,b) => v<a?a:v>b?b:v;
+
+  const PDFJS = window.pdfjsLib, PL = window.PDFLib;
+  if(PDFJS) PDFJS.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const MAX_CANVAS = 4200;
+  const MINZ = 0.1, MAXZ = 8;
+  const HL_W = 15, PEN_W = 2.6;
+  const HL_COLOR = "#ffd400", PEN_COLOR = "#e23b3b";
+  const TOOL_NAMES = { read:"Read", hl:"Highlighter", pen:"Marker", snip:"Snip", erase:"Erase" };
+
+  const state = { docs:[], zoom:1, tool:"read", seq:0 };
+  const deck = $("deck"), emptyEl = $("empty");
+
+  // ---- undo / redo history (annotation add + erase, across all docs) ----
+  const history = [], redoStack = [];
+  function pushHistory(e){ history.push(e); redoStack.length = 0; }
+  function undo(){
+    const e = history.pop(); if(!e){ toast("Nothing to undo"); return; }
+    if(e.type==="add"){ const i=e.page.annos.indexOf(e.stroke); if(i>=0) e.page.annos.splice(i,1); }
+    else if(e.type==="erase"){ e.page.annos.splice(Math.min(e.index, e.page.annos.length), 0, e.stroke); }
+    drawAnnos(e.page); redoStack.push(e); toast(e.type==="add"?"Undo draw":"Undo erase");
+  }
+  function redo(){
+    const e = redoStack.pop(); if(!e){ toast("Nothing to redo"); return; }
+    if(e.type==="add"){ e.page.annos.push(e.stroke); }
+    else if(e.type==="erase"){ const i=e.page.annos.indexOf(e.stroke); if(i>=0) e.page.annos.splice(i,1); }
+    drawAnnos(e.page); history.push(e); toast("Redo");
+  }
+  function jumpDoc(dir){
+    if(!state.docs.length) return;
+    let i = state.docs.indexOf(focusedPanelDoc());
+    i = clamp(i + dir, 0, state.docs.length-1);
+    scrollToDoc(state.docs[i]); toast(state.docs[i].name);
+  }
+  function scrollToDoc(d){
+    d.panel.scrollIntoView({behavior:"smooth", inline:"center", block:"nearest"});
+    setTimeout(()=>{ highlightActive(); updateStatus(); }, 60);
+  }
+
+  // ===================================================================
+  //  Sidebar + status bar (the "app" chrome)
+  // ===================================================================
+  function rebuildSidebar(){
+    const list = $("docList"); list.replaceChildren();
+    for(const d of state.docs){
+      const nm = el("div",{class:"nm",text:d.name});
+      const item = el("div",{class:"doc-item"},[ el("div",{class:"ic"}), nm, el("div",{class:"pc",text:d.pageCount+"p"}) ]);
+      item.addEventListener("click", ()=>scrollToDoc(d));
+      d.sideItem = item; d.sideName = nm;
+      list.appendChild(item);
+    }
+    highlightActive();
+  }
+  function highlightActive(){
+    const f = state.docs.length ? focusedPanelDoc() : null;
+    for(const d of state.docs) if(d.sideItem) d.sideItem.classList.toggle("active", d===f);
+  }
+  function updateStatus(){
+    const f = state.docs.length ? focusedPanelDoc() : null;
+    $("stDoc").textContent = f ? f.name : "No document";
+    $("stZoom").textContent = Math.round(state.zoom*100)+"%";
+    $("stTool").textContent = TOOL_NAMES[state.tool] || state.tool;
+    if(f){
+      $("stCount").textContent = (state.docs.indexOf(f)+1)+" / "+state.docs.length+" docs";
+      const bodyTop = f.body.getBoundingClientRect().top, vh = window.innerHeight; let pi = 0;
+      for(let i=0;i<f.pages.length;i++){ const r=f.pages[i].el.getBoundingClientRect(); if(r.bottom>bodyTop+30 && r.top<vh){ pi=i; break; } }
+      $("stPage").textContent = "Page "+(pi+1)+" / "+f.pages.length;
+    }else{ $("stCount").textContent=""; $("stPage").textContent=""; }
+  }
+
+  // ===================================================================
+  //  Build a document column (panel)
+  // ===================================================================
+  async function addDoc(spec){
+    const d = { id:++state.seq, name:spec.name, pdfjs:spec.pdfjs, srcBytes:spec.srcBytes,
+                pageStart:spec.pageStart, pageCount:spec.pageCount, maxW:1, pages:[], panel:null, body:null, sideItem:null, sideName:null };
+
+    const nameInput = el("input",{class:"name", value:d.name, title:"Rename"});
+    nameInput.addEventListener("input", ()=>{ d.name = nameInput.value; if(d.sideName) d.sideName.textContent = d.name; updateStatus(); });
+    const xBtn = el("button",{class:"x", text:"×", title:"Remove"});
+    xBtn.addEventListener("click", ()=>removeDoc(d));
+    const head = el("div",{class:"panel-head"},[ nameInput, el("span",{class:"count",text:d.pageCount+"p"}), xBtn ]);
+    const body = el("div",{class:"panel-body"});
+    const panel = el("div",{class:"panel"},[ head, body ]);
+    d.panel = panel; d.body = body;
+
+    for(let i=0;i<d.pageCount;i++){
+      const gp = d.pageStart + i + 1;
+      const page = await d.pdfjs.getPage(gp);
+      const vp = page.getViewport({scale:1});
+      d.maxW = Math.max(d.maxW, vp.width);
+      const wrap = el("div",{class:"page"});
+      const canvas = el("canvas",{class:"pg"});
+      const anno = el("canvas",{class:"anno"});
+      const ph = el("div",{class:"ph",text:"…"});
+      const num = el("div",{class:"pgnum",text:(i+1)});
+      wrap.appendChild(canvas); wrap.appendChild(anno); wrap.appendChild(ph); wrap.appendChild(num);
+      body.appendChild(wrap);
+      const p = { doc:d, globalPage:gp, baseW:vp.width, baseH:vp.height, el:wrap, canvas, anno, ph,
+                  rendered:false, renderedQ:0, rendering:false, pendingQ:null, annos:[], marquee:null };
+      attachDrawHandlers(p);
+      d.pages.push(p);
+    }
+    deck.appendChild(panel);
+    state.docs.push(d);
+    layoutDoc(d);
+    refreshEmpty(); rebuildSidebar(); updateStatus();
+    return d;
+  }
+
+  function layoutDoc(d){
+    for(const p of d.pages){
+      p.el.style.width  = (p.baseW * state.zoom) + "px";
+      p.el.style.height = (p.baseH * state.zoom) + "px";
+    }
+    d.panel.style.width = Math.ceil(d.maxW * state.zoom + 24) + "px";
+  }
+
+  function removeDoc(d){
+    state.docs = state.docs.filter(x=>x!==d);
+    for(const p of d.pages) freePage(p);
+    d.panel.remove();
+    refreshEmpty(); rebuildSidebar(); updateStatus(); scheduleRender();
+  }
+  function refreshEmpty(){ emptyEl.style.display = state.docs.length ? "none" : "flex"; }
+
+  // ===================================================================
+  //  Rendering — anti-flash offscreen swap; native scroll never blanks
+  // ===================================================================
+  function quality(){ return clamp(state.zoom, 0.4, MAXZ) * DPR; }
+  function pageQuality(p){ return Math.min(quality(), MAX_CANVAS / Math.max(p.baseW, p.baseH)); }
+
+  async function renderPage(p, force){
+    const q = pageQuality(p);
+    if(p.rendered && !force && Math.abs(q/p.renderedQ - 1) < 0.22) return;
+    if(p.rendering){ p.pendingQ = q; return; }
+    p.rendering = true;
+    try{
+      const page = await p.doc.pdfjs.getPage(p.globalPage);
+      const vp = page.getViewport({scale:q});
+      const tmp = document.createElement("canvas");
+      tmp.width = Math.round(vp.width); tmp.height = Math.round(vp.height);
+      await page.render({ canvasContext: tmp.getContext("2d",{alpha:false}), viewport: vp }).promise;
+      const vis = p.canvas;
+      vis.width = tmp.width; vis.height = tmp.height;
+      vis.getContext("2d",{alpha:false}).drawImage(tmp, 0, 0);
+      p.rendered = true; p.renderedQ = q;
+      if(p.ph){ p.ph.remove(); p.ph = null; }
+      layoutAnno(p);
+    }catch(e){ if(!e || e.name!=="RenderingCancelledException") console.warn("render", e); }
+    finally{
+      p.rendering = false;
+      if(p.pendingQ != null){ const pq=p.pendingQ; p.pendingQ=null;
+        if(!p.rendered || Math.abs(pq/p.renderedQ-1)>0.22) renderPage(p, true); }
+    }
+  }
+  function freePage(p){
+    p.canvas.width = 0; p.canvas.height = 0;
+    p.rendered = false; p.renderedQ = 0;
+    if(!p.ph){ p.ph = el("div",{class:"ph",text:"…"}); p.el.appendChild(p.ph); }
+  }
+
+  let renderRAF = 0;
+  function scheduleRender(){ if(renderRAF) return; renderRAF = requestAnimationFrame(()=>{ renderRAF=0; renderVisible(false); highlightActive(); updateStatus(); }); }
+  function renderVisible(force){
+    const vh = window.innerHeight, vw = window.innerWidth;
+    for(const d of state.docs){
+      for(const p of d.pages){
+        const r = p.el.getBoundingClientRect();
+        const near = r.bottom > -800 && r.top < vh+800 && r.right > -800 && r.left < vw+800;
+        const far  = r.bottom < -2400 || r.top > vh+2400 || r.right < -2400 || r.left > vw+2400;
+        if(near) renderPage(p, force);
+        else if(far && p.rendered) freePage(p);
+      }
+    }
+  }
+  deck.addEventListener("scroll", scheduleRender, true);
+  window.addEventListener("resize", ()=>{ renderVisible(true); updateStatus(); });
+
+  // ===================================================================
+  //  Zoom (cursor-anchored, works with native scroll)
+  // ===================================================================
+  function applyZoom(nz){
+    state.zoom = nz;
+    for(const d of state.docs) layoutDoc(d);
+    $("zoomLbl").textContent = Math.round(nz*100)+"%";
+    renderVisible(true);
+    for(const d of state.docs) for(const p of d.pages) drawAnnos(p);
+    updateStatus();
+  }
+  function zoomAtClient(cx, cy, factor){
+    const target = document.elementFromPoint(cx,cy);
+    const pageEl = target && target.closest ? target.closest(".page") : null;
+    let anchor = null;
+    if(pageEl){ const r = pageEl.getBoundingClientRect(); anchor = { pageEl, fx:(cx-r.left)/r.width, fy:(cy-r.top)/r.height }; }
+    applyZoom(clamp(state.zoom*factor, MINZ, MAXZ));
+    if(anchor){
+      const r2 = anchor.pageEl.getBoundingClientRect();
+      const curX = r2.left + anchor.fx*r2.width, curY = r2.top + anchor.fy*r2.height;
+      const body = anchor.pageEl.closest(".panel-body");
+      if(body) body.scrollTop += (curY - cy);
+      deck.scrollLeft += (curX - cx);
+    }
+  }
+  function deckCenter(){ const r = deck.getBoundingClientRect(); return { x:(r.left+r.right)/2, y:(r.top+r.bottom)/2 }; }
+  function zoomCenter(factor){ const c = deckCenter(); zoomAtClient(c.x, c.y, factor); }
+
+  function focusedPanelDoc(){
+    const mid = deckCenter().x;
+    let best=null, bestD=Infinity;
+    for(const d of state.docs){ const r=d.panel.getBoundingClientRect(); const c=(r.left+r.right)/2; const dist=Math.abs(c-mid);
+      if(dist<bestD){ bestD=dist; best=d; } }
+    return best || state.docs[0];
+  }
+  function fitWidth(){
+    const d = focusedPanelDoc(); if(!d) return;
+    const avail = deck.clientWidth - 60;
+    applyZoom(clamp(avail / d.maxW, MINZ, MAXZ));
+    scrollToDoc(d);
+  }
+
+  // ===================================================================
+  //  Annotations (vector, normalized 0..1 → survive zoom)
+  // ===================================================================
+  function layoutAnno(p){
+    const w = Math.max(1, Math.round(p.baseW*state.zoom*DPR));
+    const h = Math.max(1, Math.round(p.baseH*state.zoom*DPR));
+    if(p.anno.width!==w || p.anno.height!==h){ p.anno.width=w; p.anno.height=h; }
+    drawAnnos(p);
+  }
+  function drawAnnos(p, live){
+    layoutAnnoSize(p);
+    const ctx = p.anno.getContext("2d");
+    ctx.clearRect(0,0,p.anno.width,p.anno.height);
+    const all = live ? p.annos.concat([live]) : p.annos;
+    for(const s of all) strokePath(ctx, p, s);
+  }
+  function layoutAnnoSize(p){
+    const w = Math.max(1, Math.round(p.baseW*state.zoom*DPR));
+    const h = Math.max(1, Math.round(p.baseH*state.zoom*DPR));
+    if(p.anno.width!==w) p.anno.width=w;
+    if(p.anno.height!==h) p.anno.height=h;
+  }
+  function strokePath(ctx, p, s){
+    if(!s.points.length) return;
+    const W = p.anno.width, H = p.anno.height;
+    ctx.save();
+    ctx.lineCap="round"; ctx.lineJoin="round";
+    if(s.tool==="hl"){ ctx.globalCompositeOperation="multiply"; ctx.strokeStyle=HL_COLOR; ctx.globalAlpha=0.45; ctx.lineWidth = HL_W*state.zoom*DPR; }
+    else { ctx.globalCompositeOperation="source-over"; ctx.strokeStyle=PEN_COLOR; ctx.globalAlpha=1; ctx.lineWidth = PEN_W*state.zoom*DPR; }
+    ctx.beginPath();
+    ctx.moveTo(s.points[0].nx*W, s.points[0].ny*H);
+    for(let i=1;i<s.points.length;i++) ctx.lineTo(s.points[i].nx*W, s.points[i].ny*H);
+    if(s.points.length===1) ctx.lineTo(s.points[0].nx*W+0.01, s.points[0].ny*H);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function attachDrawHandlers(p){
+    const anno = p.anno;
+    anno.addEventListener("pointerdown", e=>{
+      if(state.tool==="read") return;
+      e.preventDefault();
+      try{ anno.setPointerCapture(e.pointerId); }catch(_){}   // non-fatal: drawing must not depend on capture
+      if(state.tool==="snip"){ startSnip(p, e); return; }
+      if(state.tool==="erase"){ eraseAt(p, e); return; }
+      const s = { tool: state.tool==="hl"?"hl":"pen", points:[ norm(p,e) ] };
+      p._draft = s; drawAnnos(p, s);
+    });
+    anno.addEventListener("pointermove", e=>{
+      if(p._snip){ moveSnip(p, e); return; }
+      if(!p._draft) return;
+      p._draft.points.push(norm(p,e));
+      drawAnnos(p, p._draft);
+    });
+    const finish = e=>{
+      if(p._snip){ endSnip(p, e); return; }
+      if(p._draft){ p.annos.push(p._draft); pushHistory({type:"add", page:p, stroke:p._draft}); p._draft=null; drawAnnos(p); }
+    };
+    anno.addEventListener("pointerup", finish);
+    anno.addEventListener("pointercancel", ()=>{ p._draft=null; if(p._snip) cancelSnip(p); drawAnnos(p); });
+  }
+  function norm(p, e){ const r=p.el.getBoundingClientRect(); return { nx:clamp((e.clientX-r.left)/r.width,0,1), ny:clamp((e.clientY-r.top)/r.height,0,1) }; }
+
+  function eraseAt(p, e){
+    const n = norm(p,e); const W=p.anno.width, H=p.anno.height;
+    let hit=-1, hitD=Math.max(14, PEN_W*state.zoom*DPR*1.5);
+    for(let i=p.annos.length-1;i>=0;i--){
+      const s=p.annos[i];
+      const tol = (s.tool==="hl"? HL_W: PEN_W)*state.zoom*DPR*0.6 + 6;
+      for(const pt of s.points){
+        const dx=(pt.nx-n.nx)*W, dy=(pt.ny-n.ny)*H, dist=Math.hypot(dx,dy);
+        if(dist < Math.max(hitD,tol)){ hit=i; break; }
+      }
+      if(hit>=0) break;
+    }
+    if(hit>=0){ const removed=p.annos.splice(hit,1)[0]; pushHistory({type:"erase", page:p, stroke:removed, index:hit}); drawAnnos(p); toast("Erased mark"); }
+  }
+
+  // ---- Snip: drag a rectangle, copy that region to clipboard ----
+  function startSnip(p, e){
+    const r=p.el.getBoundingClientRect();
+    p._snip = { x0:e.clientX-r.left, y0:e.clientY-r.top, x1:e.clientX-r.left, y1:e.clientY-r.top };
+    p.marquee = el("div",{class:"marquee"}); p.el.appendChild(p.marquee); positionMarquee(p);
+  }
+  function moveSnip(p, e){ const r=p.el.getBoundingClientRect(); p._snip.x1=clamp(e.clientX-r.left,0,r.width); p._snip.y1=clamp(e.clientY-r.top,0,r.height); positionMarquee(p); }
+  function positionMarquee(p){
+    const s=p._snip; const x=Math.min(s.x0,s.x1), y=Math.min(s.y0,s.y1), w=Math.abs(s.x1-s.x0), h=Math.abs(s.y1-s.y0);
+    p.marquee.style.left=x+"px"; p.marquee.style.top=y+"px"; p.marquee.style.width=w+"px"; p.marquee.style.height=h+"px";
+  }
+  function cancelSnip(p){ if(p.marquee){ p.marquee.remove(); p.marquee=null; } p._snip=null; }
+  async function endSnip(p, e){
+    const s=p._snip; if(!s){ return; }
+    const cssW=p.el.clientWidth;
+    const x=Math.min(s.x0,s.x1), y=Math.min(s.y0,s.y1), w=Math.abs(s.x1-s.x0), h=Math.abs(s.y1-s.y0);
+    cancelSnip(p);
+    if(w<6 || h<6){ toast("Snip too small — drag a box"); return; }
+    if(!p.rendered){ await renderPage(p, true); }
+    const sc = p.canvas.width / cssW, ac = p.anno.width / cssW;
+    const out = document.createElement("canvas");
+    out.width = Math.round(w*sc); out.height = Math.round(h*sc);
+    const octx = out.getContext("2d");
+    octx.fillStyle="#fff"; octx.fillRect(0,0,out.width,out.height);
+    octx.drawImage(p.canvas, x*sc, y*sc, w*sc, h*sc, 0, 0, out.width, out.height);
+    octx.drawImage(p.anno,   x*ac, y*ac, w*ac, h*ac, 0, 0, out.width, out.height);
+    out.toBlob(async blob=>{
+      let copied=false;
+      try{ if(navigator.clipboard && window.ClipboardItem){ await navigator.clipboard.write([ new ClipboardItem({ "image/png": blob }) ]); copied=true; } }catch(err){ copied=false; }
+      if(!copied){ const a=el("a",{href:URL.createObjectURL(blob), download:(p.doc.name||"snip")+"-p"+(p.doc.pages.indexOf(p)+1)+".png"}); document.body.appendChild(a); a.click(); setTimeout(()=>{a.remove();URL.revokeObjectURL(a.href);},800); }
+      toast(copied ? "Snip copied to clipboard ✓" : "Snip downloaded (clipboard unavailable)");
+    }, "image/png");
+  }
+
+  // ===================================================================
+  //  Tool selection
+  // ===================================================================
+  function setTool(t){
+    state.tool = t;
+    document.body.setAttribute("data-tool", t);
+    for(const b of document.querySelectorAll(".tool")) b.classList.toggle("active", b.dataset.t===t);
+    updateStatus();
+  }
+  $("toolGroup").addEventListener("click", e=>{ const b=e.target.closest(".tool"); if(b) setTool(b.dataset.t); });
+
+  // ===================================================================
+  //  Wheel: native vertical scroll (independent) · Shift = sideways · Ctrl = zoom
+  // ===================================================================
+  deck.addEventListener("wheel", e=>{
+    if(e.ctrlKey || e.metaKey){ e.preventDefault(); zoomAtClient(e.clientX, e.clientY, Math.pow(1.0016, -e.deltaY)); return; }
+    if(e.shiftKey){ e.preventDefault(); deck.scrollLeft += (e.deltaY || e.deltaX); }
+    else if(Math.abs(e.deltaX) > Math.abs(e.deltaY)*1.5){ e.preventDefault(); deck.scrollLeft += e.deltaX; }
+  }, { passive:false });
+
+  // ===================================================================
+  //  Load PDFs (+ .pdfx manifest detection)
+  // ===================================================================
+  function b64e(s){ return btoa(unescape(encodeURIComponent(s))); }
+  function b64d(s){ return decodeURIComponent(escape(atob(s))); }
+  function stripExt(n){ return n.replace(/\.(pdf|pdfx)$/i,""); }
+
+  async function addFromBytes(bytes, name){
+    const pdf = await PDFJS.getDocument({ data: bytes.slice(0) }).promise;
+    let manifest=null;
+    try{ const m=await pdf.getMetadata(); const s=m&&m.info&&m.info.Subject; if(s&&s.indexOf("PDFX1|")===0) manifest=JSON.parse(b64d(s.slice(6))); }catch(e){}
+    if(manifest && Array.isArray(manifest) && manifest.length){
+      let start=0;
+      for(const it of manifest){ const c=Math.min(it.pages, pdf.numPages-start); if(c<=0) break; await addDoc({name:it.name||"Document", pdfjs:pdf, srcBytes:bytes, pageStart:start, pageCount:c}); start+=c; }
+    }else{
+      await addDoc({ name:stripExt(name), pdfjs:pdf, srcBytes:bytes, pageStart:0, pageCount:pdf.numPages });
+    }
+  }
+  async function openFiles(list){
+    const files=Array.from(list); if(!files.length) return;
+    const before=state.docs.length;
+    toast("Loading "+files.length+" file"+(files.length>1?"s":"")+"…");
+    for(const f of files){ try{ await addFromBytes(new Uint8Array(await f.arrayBuffer()), f.name); }catch(err){ console.warn(err); toast("Couldn’t read "+f.name); } }
+    const added=state.docs.length-before;
+    if(added){ if(before===0) fitWidth(); else scrollToDoc(state.docs[before]); toast("Added "+added+" document"+(added>1?"s":"")); }
+    renderVisible(true);
+  }
+
+  // ===================================================================
+  //  Save .pdfx
+  // ===================================================================
+  function download(bytes, fname){
+    const blob=new Blob([bytes],{type:"application/pdf"}); const url=URL.createObjectURL(blob);
+    const a=el("a",{href:url, download:fname}); document.body.appendChild(a); a.click();
+    setTimeout(()=>{ a.remove(); URL.revokeObjectURL(url); }, 1000);
+  }
+  async function savePdfx(){
+    if(!state.docs.length){ toast("Nothing to save yet"); return; }
+    toast("Building .pdfx…");
+    const out = await PL.PDFDocument.create();
+    const cache = new Map(); const manifest=[];
+    for(const d of state.docs){
+      let src=cache.get(d.srcBytes); if(!src){ src=await PL.PDFDocument.load(d.srcBytes); cache.set(d.srcBytes, src); }
+      const idx=[]; for(let i=0;i<d.pageCount;i++) idx.push(d.pageStart+i);
+      const copied=await out.copyPages(src, idx); copied.forEach(pg=>out.addPage(pg));
+      manifest.push({ name:d.name, pages:d.pageCount });
+    }
+    out.setTitle("PDF Canvas bundle"); out.setProducer("Watchtower PDF Canvas");
+    out.setSubject("PDFX1|"+b64e(JSON.stringify(manifest)));
+    download(await out.save(), "bundle.pdfx");
+    toast("Saved bundle.pdfx — "+manifest.length+" files in one PDF");
+  }
+
+  // ===================================================================
+  //  Demo
+  // ===================================================================
+  async function loadDemo(){
+    const specs=[["Pay Stub",2,[0.10,0.36,0.62]],["Bank Statement",6,[0.10,0.45,0.30]],["Tax Return — Form 1040",4,[0.62,0.46,0.16]],["Insurance Declaration",1,[0.42,0.20,0.52]],["Closing Disclosure",3,[0.70,0.28,0.24]]];
+    toast("Generating demo documents…"); const before=state.docs.length;
+    for(const [name,n,col] of specs){
+      const doc=await PL.PDFDocument.create();
+      const font=await doc.embedFont(PL.StandardFonts.Helvetica), fontB=await doc.embedFont(PL.StandardFonts.HelveticaBold);
+      for(let i=0;i<n;i++){
+        const pg=doc.addPage([612,792]);
+        pg.drawRectangle({x:0,y:732,width:612,height:60,color:PL.rgb(col[0],col[1],col[2])});
+        pg.drawText(name,{x:40,y:752,size:19,font:fontB,color:PL.rgb(1,1,1)});
+        pg.drawText("Page "+(i+1)+" of "+n,{x:40,y:702,size:11,font,color:PL.rgb(0.35,0.4,0.48)});
+        let y=666; for(let l=0;l<19;l++){ const w=480-((l*67)%230); pg.drawRectangle({x:40,y,width:w,height:7,color:PL.rgb(0.85,0.865,0.885)}); y-=25; }
+        pg.drawText("Fine print — zoom in to confirm this stays sharp. Page "+(i+1)+".",{x:40,y:52,size:7,font,color:PL.rgb(0.5,0.55,0.62)});
+      }
+      await addFromBytes(await doc.save(), name+".pdf");
+    }
+    if(before===0) fitWidth(); else renderVisible(true);
+    toast("Loaded "+specs.length+" demo documents — try Highlight, Marker, or Snip");
+  }
+
+  // ===================================================================
+  //  Drag & drop, keyboard, wiring
+  // ===================================================================
+  ["dragenter","dragover"].forEach(ev=>deck.addEventListener(ev,e=>{e.preventDefault();deck.classList.add("dropping");}));
+  ["dragleave","drop"].forEach(ev=>deck.addEventListener(ev,e=>{e.preventDefault();if(ev==="drop"||e.target===deck||e.target===emptyEl)deck.classList.remove("dropping");}));
+  deck.addEventListener("drop", e=>{ if(e.dataTransfer&&e.dataTransfer.files) openFiles(e.dataTransfer.files); });
+
+  let toastTimer=0;
+  function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),2600); }
+  function showHelp(v){ $("scrim").classList.toggle("show",v); }
+
+  const fi=$("fileInput");
+  function pick(){ fi.value=""; fi.click(); }
+  fi.addEventListener("change", ()=>openFiles(fi.files));
+  $("btnOpen").onclick=pick; $("btnOpen2").onclick=pick;
+  $("btnDemo").onclick=loadDemo; $("btnDemo2").onclick=loadDemo;
+  $("btnSave").onclick=savePdfx;
+  $("btnFitW").onclick=fitWidth;
+  $("btnZoomIn").onclick=()=>zoomCenter(1.25);
+  $("btnZoomOut").onclick=()=>zoomCenter(0.8);
+  $("zoomLbl").onclick=()=>zoomCenter(1/state.zoom);
+  $("btnHelp").onclick=()=>showHelp(true);
+  $("btnHelpX").onclick=()=>showHelp(false);
+  $("scrim").addEventListener("click", e=>{ if(e.target===$("scrim")) showHelp(false); });
+  document.addEventListener("keydown", e=>{
+    if(e.target && (e.target.tagName==="INPUT"||e.target.isContentEditable)) return;
+    const k=e.key.toLowerCase();
+    if(e.ctrlKey || e.metaKey){
+      if(k==="z"){ e.preventDefault(); e.shiftKey ? redo() : undo(); }
+      else if(k==="y"){ e.preventDefault(); redo(); }
+      else if(e.key==="ArrowRight"){ e.preventDefault(); jumpDoc(1); }
+      else if(e.key==="ArrowLeft"){ e.preventDefault(); jumpDoc(-1); }
+      return;
+    }
+    if(e.key==="Escape"){ showHelp(false); return; }
+    if(k==="v") setTool("read"); else if(k==="h") setTool("hl"); else if(k==="m") setTool("pen");
+    else if(k==="s") setTool("snip"); else if(k==="e") setTool("erase");
+    else if(k==="+"||k==="=") zoomCenter(1.25);
+    else if(k==="-") zoomCenter(0.8);
+  });
+
+  // ---- PWA: service worker + OS file handling (open PDFs from the desktop) ----
+  if("serviceWorker" in navigator){ window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").catch(()=>{})); }
+  try{
+    if("launchQueue" in window && window.LaunchParams && "files" in LaunchParams.prototype){
+      launchQueue.setConsumer(async (params)=>{
+        if(!params || !params.files || !params.files.length) return;
+        const before = state.docs.length;
+        for(const h of params.files){ try{ const f=await h.getFile(); await addFromBytes(new Uint8Array(await f.arrayBuffer()), f.name); }catch(err){ console.warn(err); } }
+        if(state.docs.length>before){ if(before===0) fitWidth(); else renderVisible(true); }
+      });
+    }
+  }catch(e){}
+
+  if(!PDFJS || !PL) toast("Could not load PDF libraries — check your connection");
+  $("zoomLbl").textContent="100%"; refreshEmpty(); updateStatus();
+  </script>
+</body>
+</html>
