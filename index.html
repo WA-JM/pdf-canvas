@@ -623,23 +623,22 @@
     if(t && t.classList && t.classList.contains("panel-body") && t._doc) state.active = t._doc;  // scrolling a doc selects it
     scheduleRender();
   }, true);
+  // Re-fit the page whenever the deck's WIDTH changes — window drag, sidebar toggle, or the initial layout settle.
+  // This happens ALWAYS (even after a manual zoom) so "drag the window smaller → the PDF shrinks to fit" just works.
+  // Height-only changes are ignored for fit-width (a manual zoom-in makes the panel overflow → an h-scrollbar shrinks
+  // the deck HEIGHT, not width → we must NOT re-fit there, or the zoom would be undone instantly). Fit-page tracks both.
+  let _deckW = 0, _deckH = 0;
   function onDeckResize(){
-    if(fitMode && activeOrFocused()){ applyFit(true); }   // keep the page filling the deck as it resizes (window drag, sidebar toggle, layout settle)
+    const w = deck.clientWidth, h = deck.clientHeight;
+    if(w === _deckW && h === _deckH) return;                 // child-only mutation → no feedback loop
+    const widthChanged = w !== _deckW;
+    _deckW = w; _deckH = h;
+    if(activeOrFocused() && (widthChanged || fitMode === "page")){ applyFit(true); }
     else { updateDeckPadding(); renderVisible(true); }
     updateStatus();
   }
-  if(window.ResizeObserver){
-    // Observe the deck itself — fires on window resize, sidebar collapse/expand, AND the initial layout settle
-    // (deck width isn't final until the first page lays out), so the one-shot open-time fit can't get stuck on a stale width.
-    let _rw = 0, _rh = 0;
-    new ResizeObserver(()=>{
-      if(deck.clientWidth === _rw && deck.clientHeight === _rh) return;   // ignore child-only mutations → no feedback loop
-      _rw = deck.clientWidth; _rh = deck.clientHeight;
-      onDeckResize();
-    }).observe(deck);
-  } else {
-    window.addEventListener("resize", onDeckResize);
-  }
+  if(window.ResizeObserver){ new ResizeObserver(onDeckResize).observe(deck); }   // catches sidebar toggle + initial layout settle
+  window.addEventListener("resize", onDeckResize);                               // window drag — fires reliably even when RO is render-throttled
 
   // ===================================================================
   //  Zoom (cursor-anchored, works with native scroll)
@@ -688,14 +687,15 @@
       if(dist<bestD){ bestD=dist; best=d; } }
     return best || state.docs[0];
   }
-  function fitZoomFor(d){
-    return (fitMode==="page")
+  function fitZoomFor(d, mode){
+    mode = mode || fitMode || "width";
+    return (mode==="page")
       ? Math.min((deck.clientWidth-60)/docDispW(d), (deck.clientHeight-60)/docDispH(d))
       : (deck.clientWidth-30)/docDispW(d);   // width: panel = docW*zoom + 24, so -30 → panel ≈ clientWidth-6 (fills, no h-scrollbar)
   }
-  function applyFit(smooth){   // re-apply the current fit mode WITHOUT scrolling — used on window resize
-    const d = activeOrFocused(); if(!d || !fitMode) return;
-    applyZoom(clamp(fitZoomFor(d), MINZ, MAXZ), smooth);
+  function applyFit(smooth){   // re-fit the page to the window on resize — ALWAYS (even after a manual zoom → default to width), no scroll
+    const d = activeOrFocused(); if(!d) return;
+    applyZoom(clamp(fitZoomFor(d, fitMode || "width"), MINZ, MAXZ), smooth);
   }
   function fitWidth(){
     fitMode = "width";
