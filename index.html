@@ -93,8 +93,10 @@
     display:flex;flex-direction:column;align-items:center;gap:14px;scrollbar-width:thin;
   }
   .panel-body::-webkit-scrollbar{width:11px}
-  .panel-body::-webkit-scrollbar-thumb{background:rgba(26,46,74,.28);border-radius:6px;border:3px solid #dfe3e9}
-  .panel-body::-webkit-scrollbar-thumb:hover{background:rgba(26,46,74,.45)}
+  .panel-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.32);border-radius:6px;border:3px solid #000}
+  .panel-body::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.55)}
+  /* black margins around the page(s) while reading (empty/welcome screen stays light & readable) */
+  body.reading .stage, body.reading #deck, body.reading .panel-body{background:#000}
 
   .page{position:relative;background:var(--card);box-shadow:var(--shadow);border-radius:2px;flex:0 0 auto}
   .page .pg{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:2px}
@@ -534,7 +536,7 @@
     d.panel.remove();
     refreshEmpty(); rebuildSidebar(); updateStatus(); updateDeckPadding(); scheduleRender();
   }
-  function refreshEmpty(){ emptyEl.style.display = state.docs.length ? "none" : "flex"; }
+  function refreshEmpty(){ const has = state.docs.length>0; emptyEl.style.display = has ? "none" : "flex"; document.body.classList.toggle("reading", has); }
 
   // ===================================================================
   //  Rendering — anti-flash offscreen swap; native scroll never blanks
@@ -949,7 +951,11 @@
   $("btnHelpX").onclick=()=>showHelp(false);
   $("scrim").addEventListener("click", e=>{ if(e.target===$("scrim")) showHelp(false); });
   document.addEventListener("keydown", e=>{
-    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="f"){ e.preventDefault(); openSearch(e.shiftKey ? "all" : "doc"); return; }
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="f"){ e.preventDefault();
+      const scope = e.shiftKey ? "all" : "doc";
+      if(search.open && search.scope===scope) closeSearch();   // same shortcut again → close; different scope → switch
+      else openSearch(scope);
+      return; }
     if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="p"){ e.preventDefault(); printActive(); return; }
     if((e.ctrlKey||e.metaKey) && e.key==="Enter"){ e.preventDefault(); toggleTheater(); return; }
     if((e.ctrlKey||e.metaKey) && (e.key==="1"||e.key==="2")){ e.preventDefault(); zoomCenter(e.key==="1"?1.25:0.8); return; }   // Ctrl+1 in / Ctrl+2 out
