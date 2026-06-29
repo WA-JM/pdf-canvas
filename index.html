@@ -221,7 +221,7 @@
     <div class="spacer"></div>
     <button class="tb icon" id="btnRotL" title="Rotate left">↺</button>
     <button class="tb icon" id="btnRotR" title="Rotate right">↻</button>
-    <button class="tb" id="btnSharpText" title="Sharper text — native rendering (experimental)">Aa</button>
+    <button class="tb" id="btnSharpText" title="Sharp text (1:1) — on by default; turn off for sharper images / slide decks">Aa</button>
     <div class="sep"></div>
     <div class="zoomwrap">
       <button class="tb icon" id="btnZoomOut" title="Zoom out">−</button>
@@ -356,7 +356,7 @@
 
   const DPR = Math.min(window.devicePixelRatio || 1, 3);
   const MAX_CANVAS = 6000;
-  let renderSS = 2;                 // canvas oversample: 2 = crisp images (text a touch soft) · 1 = 1:1 crisp text (images softer). Toggled by "Aa".
+  let renderSS = 1;                 // DEFAULT 1:1 = crisp text (mostly-text reading); "Aa" toggles to 2× for crisp images / slide decks.
   const MINZ = 0.1, MAXZ = 8;
   const HL_W = 9, PEN_W = 2.2;
   const HL_ALPHA = 0.4;
@@ -1217,6 +1217,7 @@
 
   if(!PDFJS || !PL) toast("Could not load PDF libraries — check your connection");
   $("zoomLbl").textContent="100%"; refreshEmpty(); updateStatus();
+  $("btnSharpText").classList.toggle("active", renderSS===1);   // reflect default (sharp text on)
   </script>
 </body>
 </html>
