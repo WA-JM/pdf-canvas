@@ -97,6 +97,10 @@
   .page{position:relative;background:var(--card);box-shadow:var(--shadow);border-radius:2px;flex:0 0 auto}
   .page .pg{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:2px}
   .page .anno{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;touch-action:none}
+  .page .textlayer{position:absolute;top:0;left:0;overflow:hidden;transform-origin:0 0;color:transparent;pointer-events:none}
+  .page .textlayer span{position:absolute;white-space:pre;transform-origin:0 0;font-family:sans-serif;cursor:text}
+  body[data-tool="read"] .page .textlayer{pointer-events:auto}
+  .page .textlayer span::selection{background:rgba(58,120,200,.4)}
   .page .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#c2cad6;font-size:12px}
   .page .pgnum{position:absolute;right:6px;bottom:5px;background:rgba(26,46,74,.6);color:#fff;font-size:10px;font-weight:600;padding:1px 6px;border-radius:8px;pointer-events:none}
   .page .marquee{position:absolute;border:1.5px dashed var(--navy);background:rgba(26,46,74,.10);pointer-events:none;z-index:5}
@@ -303,6 +307,7 @@
         <div class="row"><div class="k"><kbd>H</kbd> / <kbd>M</kbd></div><div>Highlighter / red marker — drag to draw</div></div>
         <div class="row"><div class="k"><kbd>S</kbd> Snip</div><div>Drag a rectangle → that region is copied to your clipboard</div></div>
         <div class="row"><div class="k"><kbd>E</kbd> Erase / <kbd>V</kbd> Read</div><div>Click a mark to remove it / return to scrolling</div></div>
+        <div class="row"><div class="k">Select text</div><div>In Read mode, drag to select then <kbd>Ctrl</kbd>+<kbd>C</kbd> to copy (e.g. quotes from filings)</div></div>
         <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>Z</kbd></div><div>Undo last mark or erase — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> to redo</div></div>
         <div class="row"><div class="k"><kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd></div><div>Step to the next / previous document and center it (the focused doc gets a gold border). Or click a title bar / sidebar entry.</div></div>
         <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>←</kbd> / <kbd>→</kbd></div><div>Also jumps between documents</div></div>
@@ -487,10 +492,11 @@
       const anno = el("canvas",{class:"anno"});
       const ph = el("div",{class:"ph",text:"…"});
       const num = el("div",{class:"pgnum",text:(i+1)});
-      wrap.appendChild(canvas); wrap.appendChild(anno); wrap.appendChild(ph); wrap.appendChild(num);
+      const textlayer = el("div",{class:"textlayer"});
+      wrap.appendChild(canvas); wrap.appendChild(textlayer); wrap.appendChild(anno); wrap.appendChild(ph); wrap.appendChild(num);
       body.appendChild(wrap);
-      const p = { doc:d, globalPage:gp, baseW:vp.width, baseH:vp.height, el:wrap, canvas, anno, ph,
-                  rendered:false, renderedQ:0, renderedRot:0, rendering:false, pendingQ:null, annos:[], marquee:null };
+      const p = { doc:d, globalPage:gp, baseW:vp.width, baseH:vp.height, el:wrap, canvas, anno, ph, textlayer,
+                  rendered:false, renderedQ:0, renderedRot:0, rendering:false, pendingQ:null, annos:[], marquee:null, _textBuilt:false };
       attachDrawHandlers(p);
       d.pages.push(p);
     }
@@ -507,6 +513,7 @@
       const w = pageDispW(p), h = pageDispH(p);
       p.el.style.width  = (w * state.zoom) + "px";
       p.el.style.height = (h * state.zoom) + "px";
+      if(p._textBuilt) positionTextLayer(p);
       mw = Math.max(mw, w);
     }
     d.panel.style.width = Math.ceil(mw * state.zoom + 24) + "px";
@@ -544,6 +551,7 @@
       p.rendered = true; p.renderedQ = q; p.renderedRot = rot;
       if(p.ph){ p.ph.remove(); p.ph = null; }
       layoutAnno(p);
+      buildTextLayer(p);
     }catch(e){ if(!e || e.name!=="RenderingCancelledException") console.warn("render", e); }
     finally{
       p.rendering = false;
@@ -554,7 +562,36 @@
   function freePage(p){
     p.canvas.width = 0; p.canvas.height = 0;
     p.rendered = false; p.renderedQ = 0;
+    if(p.textlayer){ p.textlayer.replaceChildren(); p._textBuilt = false; }
     if(!p.ph){ p.ph = el("div",{class:"ph",text:"…"}); p.el.appendChild(p.ph); }
+  }
+  // ---- selectable text layer (copy/paste): invisible HTML text positioned over the page ----
+  function positionTextLayer(p){
+    const tl = p.textlayer; if(!tl || !p._textBuilt) return;
+    if((p.doc.rotation||0)!==0){ tl.style.display = "none"; return; }   // skip when rotated (alignment)
+    tl.style.display = ""; tl.style.transform = "scale(" + state.zoom + ")";
+  }
+  async function buildTextLayer(p){
+    const tl = p.textlayer; if(!tl) return;
+    if((p.doc.rotation||0)!==0){ tl.replaceChildren(); tl.style.display="none"; p._textBuilt=false; return; }
+    if(p._textBuilt){ positionTextLayer(p); return; }
+    const si = await ensurePageSearch(p);            // reuses the text we already extract for search
+    tl.style.display=""; tl.style.width = p.baseW+"px"; tl.style.height = p.baseH+"px"; tl.style.transform = "none";
+    const frag = document.createDocumentFragment(), meta = [];
+    for(const it of si.items){
+      const str = si.raw.slice(it.cstart, it.cstart + it.len);
+      if(!str || !str.trim()) continue;
+      const span = document.createElement("span");
+      span.textContent = str;
+      span.style.left = (it.nx*p.baseW)+"px";
+      span.style.top  = (it.ny*p.baseH)+"px";
+      span.style.fontSize = Math.max(4, it.nh*p.baseH)+"px";
+      frag.appendChild(span); meta.push({ span, target: it.nw*p.baseW });
+    }
+    tl.replaceChildren(frag);
+    for(const m of meta){ const nat = m.span.getBoundingClientRect().width; if(nat>0 && m.target>0) m.span.style.transform = "scaleX(" + (m.target/nat) + ")"; }   // match glyph advance
+    p._textBuilt = true;
+    positionTextLayer(p);
   }
 
   let renderRAF = 0;
