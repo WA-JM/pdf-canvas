@@ -56,6 +56,7 @@
   button.tb.gold{background:var(--gold);color:#3a2f12}
   button.tb.gold:hover{background:var(--gold-dk);color:#fff}
   button.tb.icon{padding:7px 9px;font-size:15px;min-width:32px;justify-content:center}
+  button.tb.active{background:rgba(26,46,74,.15)}
   .tools{display:flex;gap:2px;background:rgba(26,46,74,.05);border-radius:10px;padding:2px}
   button.tool{border:1px solid transparent;background:transparent;border-radius:8px;padding:6px 9px;font:inherit;font-size:13px;font-weight:600;color:var(--navy);cursor:pointer;display:inline-flex;align-items:center;gap:5px}
   button.tool:hover{background:rgba(26,46,74,.08)}
@@ -99,6 +100,7 @@
   .page .pg{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:2px}
   .page .anno{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;touch-action:none}
   .page .textlayer{position:absolute;top:0;left:0;overflow:hidden;transform-origin:0 0;color:transparent;pointer-events:none}
+  body.sharptext .page .textlayer{color:#1a1a1a}   /* "Sharp text": show the native-rendered text layer */
   .page .textlayer span{position:absolute;white-space:pre;transform-origin:0 0;font-family:sans-serif;cursor:text}
   body[data-tool="read"] .page .textlayer{pointer-events:auto}
   .page .textlayer span::selection{background:rgba(58,120,200,.4)}
@@ -220,6 +222,7 @@
     <div class="spacer"></div>
     <button class="tb icon" id="btnRotL" title="Rotate left">↺</button>
     <button class="tb icon" id="btnRotR" title="Rotate right">↻</button>
+    <button class="tb" id="btnSharpText" title="Sharper text — native rendering (experimental)">Aa</button>
     <div class="sep"></div>
     <div class="zoomwrap">
       <button class="tb icon" id="btnZoomOut" title="Zoom out">−</button>
@@ -354,7 +357,7 @@
 
   const DPR = Math.min(window.devicePixelRatio || 1, 3);
   const MAX_CANVAS = 6000;
-  const SUPERSAMPLE = 2.5;          // render this many × display resolution, then downscale → crisp text + images on 1× (1080p) screens
+  const SUPERSAMPLE = 2;            // integer ratio → clean downscale (2.5 was non-integer = slightly blurry); use "Sharp text" toggle for native-crisp text
   const MINZ = 0.1, MAXZ = 8;
   const HL_W = 9, PEN_W = 2.2;
   const HL_ALPHA = 0.4;
@@ -1185,6 +1188,7 @@
     setTimeout(()=>{ updateDeckPadding(); renderVisible(true); }, 180);   // recompute after the width transition
   }
   $("btnSidebar").onclick = ()=>setSidebarCollapsed(!document.querySelector(".sidebar").classList.contains("collapsed"));
+  $("btnSharpText").onclick = ()=>{ const on = document.body.classList.toggle("sharptext"); $("btnSharpText").classList.toggle("active", on); toast(on ? "Sharp text on — native rendering" : "Sharp text off"); };
 
   // ---- theater / full-screen reading mode ----
   function toggleTheater(on){
