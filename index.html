@@ -115,6 +115,34 @@
   #empty .cta button{font-size:14px;padding:10px 18px}
   #deck.dropping::after{content:"";position:absolute;inset:10px;border:3px dashed var(--gold);border-radius:18px;background:rgba(197,165,90,.08);pointer-events:none;z-index:40}
 
+  /* ---------------- Zoom presets menu ---------------- */
+  button.zoomlbl{border:1px solid transparent;cursor:pointer}
+  button.zoomlbl:hover{background:rgba(26,46,74,.08)}
+  .zoommenu{position:fixed;z-index:58;display:none;flex-direction:column;background:#fff;border:1px solid var(--line);box-shadow:0 12px 30px rgba(26,46,74,.22);border-radius:10px;padding:5px;min-width:180px}
+  .zoommenu.show{display:flex}
+  .zoommenu button{border:none;background:transparent;text-align:left;font:inherit;font-size:13px;color:var(--navy);padding:7px 11px;border-radius:7px;cursor:pointer;white-space:nowrap}
+  .zoommenu button:hover{background:rgba(26,46,74,.08)}
+
+  /* ---------------- Sidebar tabs + thumbnails ---------------- */
+  .side-tabs{flex:0 0 auto;display:flex;gap:3px;padding:9px 8px 7px}
+  .side-tab{flex:1 1 0;border:none;background:transparent;border-radius:7px;padding:6px 8px;font:inherit;font-size:11.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);cursor:pointer}
+  .side-tab:hover{background:rgba(26,46,74,.07);color:var(--navy)}
+  .side-tab.active{background:#fff;box-shadow:0 1px 3px rgba(26,46,74,.16);color:var(--navy)}
+  .thumb-list{flex:1 1 auto;overflow-y:auto;min-height:0;padding:8px 10px 14px;display:flex;flex-direction:column;align-items:center;gap:11px}
+  .thumb{cursor:pointer;border:1px solid var(--line);border-radius:4px;background:#fff;padding:3px;box-shadow:0 1px 4px rgba(26,46,74,.13);position:relative;line-height:0}
+  .thumb:hover{border-color:var(--gold)}
+  .thumb.current{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold)}
+  .thumb canvas{display:block;width:148px;height:auto;border-radius:2px;background:#fff;min-height:40px}
+  .th-num{position:absolute;right:5px;bottom:5px;background:rgba(26,46,74,.62);color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;line-height:1.4}
+
+  /* ---------------- Status-bar page navigation ---------------- */
+  .pagenav{display:flex;align-items:center;gap:5px}
+  .pagenav .sbtn{border:none;background:transparent;color:var(--navy);font-size:15px;line-height:1;cursor:pointer;padding:0 6px;border-radius:5px}
+  .pagenav .sbtn:hover{background:rgba(26,46,74,.13)}
+  .pagenav .pnsep{opacity:.6}
+  .pninput{width:36px;text-align:center;border:1px solid var(--line);border-radius:5px;font:inherit;font-size:11.5px;padding:1px 3px;color:var(--ink);background:#fff}
+  .pninput:focus{outline:none;border-color:var(--gold)}
+
   /* ---------------- Search bar ---------------- */
   .searchbar{position:fixed;top:60px;right:16px;z-index:55;display:none;align-items:center;gap:6px;
     background:rgba(255,255,255,.94);backdrop-filter:blur(14px) saturate(1.4);-webkit-backdrop-filter:blur(14px);
@@ -164,10 +192,12 @@
       <button class="tool" data-t="erase" id="tErase" title="Erase annotations (E)">⌫ Erase</button>
     </div>
     <div class="spacer"></div>
-    <button class="tb gold" id="btnFitW" title="Fit the focused document to width">Fit width</button>
+    <button class="tb icon" id="btnRotL" title="Rotate left">↺</button>
+    <button class="tb icon" id="btnRotR" title="Rotate right">↻</button>
+    <div class="sep"></div>
     <div class="zoomwrap">
       <button class="tb icon" id="btnZoomOut" title="Zoom out">−</button>
-      <span class="zoomlbl" id="zoomLbl" title="Reset to 100%">100%</span>
+      <button class="zoomlbl" id="zoomLbl" title="Zoom presets">100% ▾</button>
       <button class="tb icon" id="btnZoomIn" title="Zoom in">＋</button>
     </div>
     <div class="sep"></div>
@@ -176,10 +206,26 @@
     <button class="tb icon" id="btnHelp" title="Help">?</button>
   </header>
 
+  <div class="zoommenu" id="zoomMenu">
+    <button data-z="fitw">Fit width</button>
+    <button data-z="fitp">Fit page</button>
+    <button data-z="1">Actual size (100%)</button>
+    <button data-z="0.5">50%</button>
+    <button data-z="0.75">75%</button>
+    <button data-z="1.25">125%</button>
+    <button data-z="1.5">150%</button>
+    <button data-z="2">200%</button>
+    <button data-z="4">400%</button>
+  </div>
+
   <div class="appbody">
     <aside class="sidebar">
-      <div class="side-head">Documents</div>
+      <div class="side-tabs">
+        <button class="side-tab active" data-side="docs">Documents</button>
+        <button class="side-tab" data-side="pages">Pages</button>
+      </div>
       <div class="doc-list" id="docList"></div>
+      <div class="thumb-list" id="thumbList" style="display:none"></div>
     </aside>
     <main class="stage">
       <div id="deck">
@@ -198,7 +244,11 @@
 
   <footer class="statusbar">
     <span>📄 <b id="stDoc">No document</b></span>
-    <span id="stPage"></span>
+    <span class="pagenav">
+      <button class="sbtn" id="pnPrev" title="Previous page (Ctrl+↑)">‹</button>
+      <input id="pnInput" class="pninput" title="Go to page" inputmode="numeric"> <span class="pnsep">/</span> <span id="pnTotal">–</span>
+      <button class="sbtn" id="pnNext" title="Next page (Ctrl+↓)">›</button>
+    </span>
     <div class="spacer"></div>
     <span id="stCount"></span>
     <span>Zoom <b id="stZoom">100%</b></span>
@@ -363,17 +413,24 @@
       if(d.panel) d.panel.classList.toggle("focused", d===f);
     }
   }
+  function currentPageIndex(d){
+    if(!d || !d.pages.length) return 0;
+    const bodyTop = d.body.getBoundingClientRect().top, vh = window.innerHeight; let pi = 0;
+    for(let i=0;i<d.pages.length;i++){ const r=d.pages[i].el.getBoundingClientRect(); if(r.bottom>bodyTop+30 && r.top<vh){ pi=i; break; } }
+    return pi;
+  }
   function updateStatus(){
     const f = (state.active && state.docs.indexOf(state.active)>=0) ? state.active : (state.docs[0] || null);
     $("stDoc").textContent = f ? f.name : "No document";
     $("stZoom").textContent = Math.round(state.zoom*100)+"%";
+    $("zoomLbl").textContent = Math.round(state.zoom*100)+"% ▾";
     $("stTool").textContent = TOOL_NAMES[state.tool] || state.tool;
     if(f){
       $("stCount").textContent = (state.docs.indexOf(f)+1)+" / "+state.docs.length+" docs";
-      const bodyTop = f.body.getBoundingClientRect().top, vh = window.innerHeight; let pi = 0;
-      for(let i=0;i<f.pages.length;i++){ const r=f.pages[i].el.getBoundingClientRect(); if(r.bottom>bodyTop+30 && r.top<vh){ pi=i; break; } }
-      $("stPage").textContent = "Page "+(pi+1)+" / "+f.pages.length;
-    }else{ $("stCount").textContent=""; $("stPage").textContent=""; }
+      $("pnTotal").textContent = f.pages.length;
+      if(document.activeElement !== $("pnInput")) $("pnInput").value = (currentPageIndex(f)+1);
+    }else{ $("stCount").textContent=""; $("pnTotal").textContent="–"; $("pnInput").value=""; }
+    if(typeof sidebarMode!=="undefined" && sidebarMode==="pages"){ ensureThumbs(); markThumbCurrent(); }
   }
 
   // ===================================================================
@@ -381,7 +438,7 @@
   // ===================================================================
   async function addDoc(spec){
     const d = { id:++state.seq, name:spec.name, pdfjs:spec.pdfjs, srcBytes:spec.srcBytes,
-                pageStart:spec.pageStart, pageCount:spec.pageCount, maxW:1, pages:[], panel:null, body:null, sideItem:null, sideName:null };
+                pageStart:spec.pageStart, pageCount:spec.pageCount, maxW:1, maxH:1, rotation:0, pages:[], panel:null, body:null, sideItem:null, sideName:null };
 
     const nameInput = el("input",{class:"name", value:d.name, title:"Rename"});
     nameInput.addEventListener("input", ()=>{ d.name = nameInput.value; if(d.sideName) d.sideName.textContent = d.name; updateStatus(); });
@@ -397,7 +454,7 @@
       const gp = d.pageStart + i + 1;
       const page = await d.pdfjs.getPage(gp);
       const vp = page.getViewport({scale:1});
-      d.maxW = Math.max(d.maxW, vp.width);
+      d.maxW = Math.max(d.maxW, vp.width); d.maxH = Math.max(d.maxH, vp.height);
       const wrap = el("div",{class:"page"});
       const canvas = el("canvas",{class:"pg"});
       const anno = el("canvas",{class:"anno"});
@@ -406,7 +463,7 @@
       wrap.appendChild(canvas); wrap.appendChild(anno); wrap.appendChild(ph); wrap.appendChild(num);
       body.appendChild(wrap);
       const p = { doc:d, globalPage:gp, baseW:vp.width, baseH:vp.height, el:wrap, canvas, anno, ph,
-                  rendered:false, renderedQ:0, rendering:false, pendingQ:null, annos:[], marquee:null };
+                  rendered:false, renderedQ:0, renderedRot:0, rendering:false, pendingQ:null, annos:[], marquee:null };
       attachDrawHandlers(p);
       d.pages.push(p);
     }
@@ -418,11 +475,14 @@
   }
 
   function layoutDoc(d){
+    let mw = 1;
     for(const p of d.pages){
-      p.el.style.width  = (p.baseW * state.zoom) + "px";
-      p.el.style.height = (p.baseH * state.zoom) + "px";
+      const w = pageDispW(p), h = pageDispH(p);
+      p.el.style.width  = (w * state.zoom) + "px";
+      p.el.style.height = (h * state.zoom) + "px";
+      mw = Math.max(mw, w);
     }
-    d.panel.style.width = Math.ceil(d.maxW * state.zoom + 24) + "px";
+    d.panel.style.width = Math.ceil(mw * state.zoom + 24) + "px";
   }
 
   function removeDoc(d){
@@ -441,20 +501,20 @@
   function pageQuality(p){ return Math.min(quality(), MAX_CANVAS / Math.max(p.baseW, p.baseH)); }
 
   async function renderPage(p, force){
-    const q = pageQuality(p);
-    if(p.rendered && !force && Math.abs(q/p.renderedQ - 1) < 0.22) return;
+    const q = pageQuality(p), rot = p.doc.rotation||0;
+    if(p.rendered && !force && p.renderedRot===rot && Math.abs(q/p.renderedQ - 1) < 0.22) return;
     if(p.rendering){ p.pendingQ = q; return; }
     p.rendering = true;
     try{
       const page = await p.doc.pdfjs.getPage(p.globalPage);
-      const vp = page.getViewport({scale:q});
+      const vp = page.getViewport({ scale:q, rotation: ((page.rotate||0) + rot) % 360 });
       const tmp = document.createElement("canvas");
       tmp.width = Math.round(vp.width); tmp.height = Math.round(vp.height);
       await page.render({ canvasContext: tmp.getContext("2d",{alpha:false}), viewport: vp }).promise;
       const vis = p.canvas;
       vis.width = tmp.width; vis.height = tmp.height;
       vis.getContext("2d",{alpha:false}).drawImage(tmp, 0, 0);
-      p.rendered = true; p.renderedQ = q;
+      p.rendered = true; p.renderedQ = q; p.renderedRot = rot;
       if(p.ph){ p.ph.remove(); p.ph = null; }
       layoutAnno(p);
     }catch(e){ if(!e || e.name!=="RenderingCancelledException") console.warn("render", e); }
@@ -530,7 +590,7 @@
   function fitWidth(){
     const d = (state.active && state.docs.indexOf(state.active)>=0) ? state.active : focusedPanelDoc(); if(!d) return;
     const avail = deck.clientWidth - 60;
-    applyZoom(clamp(avail / d.maxW, MINZ, MAXZ));
+    applyZoom(clamp(avail / docDispW(d), MINZ, MAXZ));
     scrollToDoc(d);
   }
 
@@ -538,14 +598,14 @@
   //  Annotations (vector, normalized 0..1 → survive zoom)
   // ===================================================================
   function layoutAnno(p){
-    const w = Math.max(1, Math.round(p.baseW*state.zoom*DPR));
-    const h = Math.max(1, Math.round(p.baseH*state.zoom*DPR));
+    const w = Math.max(1, Math.round(pageDispW(p)*state.zoom*DPR));
+    const h = Math.max(1, Math.round(pageDispH(p)*state.zoom*DPR));
     if(p.anno.width!==w || p.anno.height!==h){ p.anno.width=w; p.anno.height=h; }
     drawAnnos(p);
   }
   function layoutAnnoSize(p){
-    const w = Math.max(1, Math.round(p.baseW*state.zoom*DPR));
-    const h = Math.max(1, Math.round(p.baseH*state.zoom*DPR));
+    const w = Math.max(1, Math.round(pageDispW(p)*state.zoom*DPR));
+    const h = Math.max(1, Math.round(pageDispH(p)*state.zoom*DPR));
     if(p.anno.width!==w) p.anno.width=w;
     if(p.anno.height!==h) p.anno.height=h;
   }
@@ -794,10 +854,8 @@
   $("btnDemo").onclick=loadDemo; $("btnDemo2").onclick=loadDemo;
   $("btnSave").onclick=savePdfx;
   $("btnPrint").onclick=printActive;
-  $("btnFitW").onclick=fitWidth;
   $("btnZoomIn").onclick=()=>zoomCenter(1.25);
   $("btnZoomOut").onclick=()=>zoomCenter(0.8);
-  $("zoomLbl").onclick=()=>zoomCenter(1/state.zoom);
   $("btnHelp").onclick=()=>showHelp(true);
   $("btnHelpX").onclick=()=>showHelp(false);
   $("scrim").addEventListener("click", e=>{ if(e.target===$("scrim")) showHelp(false); });
@@ -932,6 +990,99 @@
   $("searchPrev").onclick = ()=>gotoMatch(search.idx-1);
   $("searchClose").onclick = closeSearch;
   for(const t of document.querySelectorAll(".sb-tab")) t.addEventListener("click", ()=>{ search.scope=t.dataset.scope; for(const x of document.querySelectorAll(".sb-tab")) x.classList.toggle("active", x===t); sInput.focus(); runSearch(); });
+
+  // ===================================================================
+  //  Adobe-style: rotation helpers · zoom presets · page nav · thumbnails
+  // ===================================================================
+  function rot180(d){ return ((d.rotation||0) % 180) === 90; }                 // width/height swapped?
+  function pageDispW(p){ return rot180(p.doc) ? p.baseH : p.baseW; }
+  function pageDispH(p){ return rot180(p.doc) ? p.baseW : p.baseH; }
+  function docDispW(d){ return rot180(d) ? (d.maxH||d.maxW) : d.maxW; }
+  function docDispH(d){ return rot180(d) ? d.maxW : (d.maxH||d.maxW); }
+  function activeOrFocused(){ return (state.active && state.docs.indexOf(state.active)>=0) ? state.active : focusedPanelDoc(); }
+
+  // ---- zoom presets ----
+  function setZoom(z){ const c = deckCenter(); zoomAtClient(c.x, c.y, clamp(z,MINZ,MAXZ)/state.zoom); }
+  function fitPage(){
+    const d = activeOrFocused(); if(!d) return;
+    const z = Math.min((deck.clientWidth-60)/docDispW(d), (deck.clientHeight-60)/docDispH(d));
+    applyZoom(clamp(z, MINZ, MAXZ)); scrollToDoc(d);
+  }
+  const zoomMenu = $("zoomMenu");
+  function toggleZoomMenu(show){
+    const open = (show===undefined) ? !zoomMenu.classList.contains("show") : show;
+    if(open){ const r=$("zoomLbl").getBoundingClientRect(); zoomMenu.style.left=Math.max(8, r.left-40)+"px"; zoomMenu.style.top=(r.bottom+6)+"px"; zoomMenu.classList.add("show"); }
+    else zoomMenu.classList.remove("show");
+  }
+  $("zoomLbl").addEventListener("click", e=>{ e.stopPropagation(); toggleZoomMenu(); });
+  zoomMenu.addEventListener("click", e=>{ const b=e.target.closest("button"); if(!b) return;
+    const z=b.dataset.z; if(z==="fitw") fitWidth(); else if(z==="fitp") fitPage(); else setZoom(parseFloat(z)); toggleZoomMenu(false); });
+  document.addEventListener("click", ()=>toggleZoomMenu(false));
+
+  // ---- on-screen page navigation ----
+  function goToPageIndex(d, i){
+    if(!d || !d.pages[i]) return;
+    selectDoc(d, false);
+    const body=d.body, bt=body.getBoundingClientRect().top, cur=body.scrollTop;
+    const top = cur + (d.pages[i].el.getBoundingClientRect().top - bt);
+    body.scrollTo({ top: Math.max(0, top-12), behavior:"smooth" });
+    updateStatus();
+  }
+  $("pnPrev").onclick = ()=>scrollActivePage(-1);
+  $("pnNext").onclick = ()=>scrollActivePage(1);
+  $("pnInput").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); const d=activeOrFocused(), n=parseInt($("pnInput").value,10); if(d && n>=1) goToPageIndex(d, Math.min(n, d.pages.length)-1); $("pnInput").blur(); } });
+
+  // ---- sidebar Documents ⇄ Pages (thumbnails) ----
+  let sidebarMode = "docs", thumbDoc = null, thumbIO = null;
+  function setSidebarMode(m){
+    sidebarMode = m;
+    for(const t of document.querySelectorAll(".side-tab")) t.classList.toggle("active", t.dataset.side===m);
+    $("docList").style.display  = m==="docs"  ? "" : "none";
+    $("thumbList").style.display = m==="pages" ? "" : "none";
+    if(m==="pages"){ thumbDoc=null; ensureThumbs(); }
+  }
+  for(const t of document.querySelectorAll(".side-tab")) t.addEventListener("click", ()=>setSidebarMode(t.dataset.side));
+  function ensureThumbs(){ const d=activeOrFocused(); if(d && d!==thumbDoc) rebuildThumbs(d); }
+  function rebuildThumbs(d){
+    thumbDoc = d;
+    const list = $("thumbList"); list.replaceChildren();
+    if(thumbIO) thumbIO.disconnect();
+    thumbIO = new IntersectionObserver(ents=>{ for(const en of ents){ if(en.isIntersecting){ const t=en.target; renderThumb(t._page, t.firstChild); thumbIO.unobserve(t); } } }, { root:list, rootMargin:"260px" });
+    d.pages.forEach((p,i)=>{
+      const cv = el("canvas"), num = el("div",{class:"th-num",text:(i+1)});
+      const t = el("div",{class:"thumb"},[cv, num]); t._page=p; t._idx=i;
+      t.addEventListener("click", ()=>goToPageIndex(d, i));
+      list.appendChild(t); thumbIO.observe(t);
+    });
+    markThumbCurrent();
+  }
+  async function renderThumb(p, cv){
+    if(cv._done) return; cv._done = true;
+    try{
+      const page = await p.doc.pdfjs.getPage(p.globalPage);
+      const base = rot180(p.doc) ? p.baseH : p.baseW;
+      const vp = page.getViewport({ scale: 148/Math.max(1,base), rotation: ((page.rotate||0)+(p.doc.rotation||0))%360 });
+      cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+      await page.render({ canvasContext: cv.getContext("2d",{alpha:false}), viewport: vp }).promise;
+    }catch(e){ cv._done=false; }
+  }
+  function markThumbCurrent(){
+    if(sidebarMode!=="pages" || !thumbDoc) return;
+    const pi = currentPageIndex(thumbDoc);
+    for(const t of $("thumbList").children) t.classList.toggle("current", t._idx===pi);
+  }
+
+  // ---- rotate the active document ----
+  function rotateDoc(dir){
+    const d = activeOrFocused(); if(!d) return;
+    d.rotation = ((((d.rotation||0) + dir*90) % 360) + 360) % 360;
+    layoutDoc(d); updateDeckPadding(); renderVisible(true);
+    for(const p of d.pages) drawAnnos(p);
+    if(sidebarMode==="pages" && thumbDoc===d){ thumbDoc=null; ensureThumbs(); }
+    toast("Rotated "+(dir>0?"right":"left"));
+  }
+  $("btnRotL").onclick = ()=>rotateDoc(-1);
+  $("btnRotR").onclick = ()=>rotateDoc(1);
 
   // ---- PWA: service worker + OS file handling (open PDFs from the desktop) ----
   if("serviceWorker" in navigator){ window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").catch(()=>{})); }
