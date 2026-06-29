@@ -234,6 +234,7 @@
         <div class="row"><div class="k"><kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd></div><div>Step to the next / previous document and center it (the focused doc gets a gold border). Or click a title bar / sidebar entry.</div></div>
         <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>←</kbd> / <kbd>→</kbd></div><div>Also jumps between documents</div></div>
         <div class="row"><div class="k"><kbd>↑</kbd> <kbd>↓</kbd> / <kbd>PgUp</kbd> <kbd>PgDn</kbd></div><div>Scroll within the selected document (also Space, Home/End)</div></div>
+        <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd></div><div>Jump to the previous / next page of the selected document</div></div>
         <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>F</kbd></div><div>Find in the active document — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> searches all documents. Enter / Shift+Enter step through hits.</div></div>
         <div class="note"><b>.pdfx:</b> “Save .pdfx” merges all documents into one normal PDF (opens anywhere); re-open it here to split back into columns. <i>Annotations are not yet burned into the saved file — use Snip to capture marked-up regions.</i></div>
       </div>
@@ -326,6 +327,16 @@
     const lastW  = state.docs[state.docs.length-1].panel.offsetWidth || 240;
     deck.style.paddingLeft  = Math.max(18, half - firstW/2) + "px";
     deck.style.paddingRight = Math.max(18, half - lastW/2)  + "px";
+  }
+  // Ctrl+Up / Ctrl+Down — jump to the previous / next PDF page within the active document
+  function scrollActivePage(dir){
+    const d = state.active; if(!d || !d.pages.length) return;
+    const body = d.body, bodyTop = body.getBoundingClientRect().top, cur = body.scrollTop;
+    const tops = d.pages.map(p => cur + (p.el.getBoundingClientRect().top - bodyTop));  // absolute content-top of each page
+    let curIdx = 0;                                   // page currently at the top (≤ cur, with padding tolerance)
+    for(let i=0;i<tops.length;i++){ if(tops[i] <= cur + 14) curIdx = i; }
+    const ni = clamp(curIdx + dir, 0, tops.length-1);
+    body.scrollTo({ top: Math.max(0, tops[ni] - 12), behavior:"smooth" });
   }
 
   // ===================================================================
@@ -776,6 +787,8 @@
       else if(k==="y"){ e.preventDefault(); redo(); }
       else if(e.key==="ArrowRight"){ e.preventDefault(); jumpDoc(1); }
       else if(e.key==="ArrowLeft"){ e.preventDefault(); jumpDoc(-1); }
+      else if(e.key==="ArrowDown"){ e.preventDefault(); scrollActivePage(1); }
+      else if(e.key==="ArrowUp"){ e.preventDefault(); scrollActivePage(-1); }
       return;
     }
     if(e.key==="Escape"){ showHelp(false); if(search.open) closeSearch(); return; }
