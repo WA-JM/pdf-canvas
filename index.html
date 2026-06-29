@@ -305,6 +305,7 @@
         <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>F</kbd></div><div>Find in the active document — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> searches all documents. Enter / Shift+Enter step through hits.</div></div>
         <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>P</kbd></div><div>Print the selected document</div></div>
         <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>Enter</kbd></div><div>Full-screen / theater reading mode (Esc to exit)</div></div>
+        <div class="row"><div class="k"><kbd>Ctrl</kbd>+<kbd>1</kbd> / <kbd>2</kbd></div><div>Zoom in / out (also <kbd>+</kbd> / <kbd>−</kbd>, or Ctrl+scroll)</div></div>
         <div class="note"><b>.pdfx:</b> “Save .pdfx” merges all documents into one normal PDF (opens anywhere); re-open it here to split back into columns. <i>Annotations are not yet burned into the saved file — use Snip to capture marked-up regions.</i></div>
       </div>
     </div>
@@ -339,7 +340,7 @@
   const PDFJS = window.pdfjsLib, PL = window.PDFLib;
   if(PDFJS) PDFJS.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
-  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const DPR = Math.min(window.devicePixelRatio || 1, 3);
   const MAX_CANVAS = 4200;
   const MINZ = 0.1, MAXZ = 8;
   const HL_W = 9, PEN_W = 2.2;
@@ -515,7 +516,7 @@
   //  Rendering — anti-flash offscreen swap; native scroll never blanks
   // ===================================================================
   function quality(){ return clamp(state.zoom, 0.4, MAXZ) * DPR; }
-  function pageQuality(p){ return Math.min(quality(), MAX_CANVAS / Math.max(p.baseW, p.baseH)); }
+  function pageQuality(p){ return Math.min(quality()*1.2, MAX_CANVAS / Math.max(p.baseW, p.baseH)); }   // 1.2× supersample → crisper images
 
   async function renderPage(p, force){
     const q = pageQuality(p), rot = p.doc.rotation||0;
@@ -869,6 +870,7 @@
     if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="f"){ e.preventDefault(); openSearch(e.shiftKey ? "all" : "doc"); return; }
     if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="p"){ e.preventDefault(); printActive(); return; }
     if((e.ctrlKey||e.metaKey) && e.key==="Enter"){ e.preventDefault(); toggleTheater(); return; }
+    if((e.ctrlKey||e.metaKey) && (e.key==="1"||e.key==="2")){ e.preventDefault(); zoomCenter(e.key==="1"?1.25:0.8); return; }   // Ctrl+1 in / Ctrl+2 out
     if(e.target && (e.target.tagName==="INPUT"||e.target.isContentEditable)) return;
     const k=e.key.toLowerCase();
     if(e.key==="Tab"){ e.preventDefault(); jumpDoc(e.shiftKey ? -1 : 1); return; }   // Tab / Shift+Tab between docs
