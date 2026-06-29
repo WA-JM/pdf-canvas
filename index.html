@@ -176,6 +176,9 @@
 
   /* ---------------- Theater / full-screen mode ---------------- */
   body.theater .appbar, body.theater .sidebar, body.theater .statusbar{display:none}
+  body.theater .stage, body.theater #deck, body.theater .panel-body{background:#000}   /* black around the page */
+  body.theater .panel:not(.focused){display:none}        /* only the selected document */
+  body.theater .panel-head{display:none}                 /* hide the title bar — just the document */
   #theaterExit{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:70;display:none;border:none;background:rgba(26,46,74,.82);color:#fff;font:inherit;font-size:12px;font-weight:600;padding:6px 13px;border-radius:9px;cursor:pointer;box-shadow:0 4px 14px rgba(26,46,74,.3)}
   body.theater #theaterExit{display:block}
 
