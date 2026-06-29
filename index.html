@@ -1197,10 +1197,18 @@
       if(want){ if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{}); }
       else if(document.fullscreenElement && document.exitFullscreen){ document.exitFullscreen().catch(()=>{}); }
     }catch(e){}
-    setTimeout(()=>{ updateDeckPadding(); if(want && activeOrFocused()) fitPage(); renderVisible(true); updateStatus(); }, 90);   // theater: fit the whole page to the screen
+    setTimeout(()=>{ updateDeckPadding(); if(want && activeOrFocused()) fitWidth(); renderVisible(true); updateStatus(); }, 120);   // theater: fill the width → big, crisp text
   }
   $("theaterExit").onclick = ()=>toggleTheater(false);
-  document.addEventListener("fullscreenchange", ()=>{ if(!document.fullscreenElement && document.body.classList.contains("theater")){ document.body.classList.remove("theater"); setTimeout(()=>{ updateDeckPadding(); renderVisible(true); }, 60); } });
+  document.addEventListener("fullscreenchange", ()=>{
+    const inTheater = document.body.classList.contains("theater");
+    if(document.fullscreenElement && inTheater){            // fullscreen just engaged → viewport now final, re-fit to it
+      setTimeout(()=>{ updateDeckPadding(); if(activeOrFocused()) fitWidth(); renderVisible(true); updateStatus(); }, 60);
+    } else if(!document.fullscreenElement && inTheater){     // user left fullscreen (Esc/F11) → drop theater too
+      document.body.classList.remove("theater");
+      setTimeout(()=>{ updateDeckPadding(); renderVisible(true); }, 60);
+    }
+  });
 
   // ---- PWA: service worker + OS file handling (open PDFs from the desktop) ----
   if("serviceWorker" in navigator){ window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").catch(()=>{})); }
