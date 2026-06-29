@@ -23,7 +23,8 @@
     box-shadow:0 1px 2px rgba(26,46,74,.05);overflow-x:auto;overflow-y:hidden;
   }
   .appbody{flex:1 1 auto;display:flex;min-height:0}
-  .sidebar{flex:0 0 220px;display:flex;flex-direction:column;min-height:0;background:#f4f6f9;border-right:1px solid var(--line)}
+  .sidebar{flex:0 0 220px;display:flex;flex-direction:column;min-height:0;background:#f4f6f9;border-right:1px solid var(--line);overflow:hidden;transition:flex-basis .16s ease}
+  .sidebar.collapsed{flex-basis:0;border-right:none}
   .side-head{flex:0 0 auto;padding:11px 14px 7px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
   .doc-list{flex:1 1 auto;overflow-y:auto;min-height:0;padding-bottom:8px}
   .doc-item{display:flex;align-items:center;gap:9px;padding:8px 13px;cursor:pointer;border-left:3px solid transparent;font-size:13px;color:var(--ink)}
@@ -181,6 +182,7 @@
 
   <header class="appbar" id="toolbar">
     <div class="brand"><span class="dot"></span>PDF Canvas</div>
+    <button class="tb icon" id="btnSidebar" title="Show / hide the document panel">☰</button>
     <button class="tb primary" id="btnOpen">＋ Open</button>
     <button class="tb" id="btnDemo">Demo</button>
     <div class="sep"></div>
@@ -219,7 +221,7 @@
   </div>
 
   <div class="appbody">
-    <aside class="sidebar">
+    <aside class="sidebar collapsed">
       <div class="side-tabs">
         <button class="side-tab active" data-side="docs">Documents</button>
         <button class="side-tab" data-side="pages">Pages</button>
@@ -1083,6 +1085,13 @@
   }
   $("btnRotL").onclick = ()=>rotateDoc(-1);
   $("btnRotR").onclick = ()=>rotateDoc(1);
+
+  // ---- collapsible sidebar (collapsed by default) ----
+  function setSidebarCollapsed(c){
+    document.querySelector(".sidebar").classList.toggle("collapsed", c);
+    setTimeout(()=>{ updateDeckPadding(); renderVisible(true); }, 180);   // recompute after the width transition
+  }
+  $("btnSidebar").onclick = ()=>setSidebarCollapsed(!document.querySelector(".sidebar").classList.contains("collapsed"));
 
   // ---- PWA: service worker + OS file handling (open PDFs from the desktop) ----
   if("serviceWorker" in navigator){ window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").catch(()=>{})); }
