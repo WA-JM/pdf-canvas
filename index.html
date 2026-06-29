@@ -357,6 +357,7 @@
   const DPR = Math.min(window.devicePixelRatio || 1, 3);
   const MAX_CANVAS = 6000;
   let renderSS = 1;                 // DEFAULT 1:1 = crisp text (mostly-text reading); "Aa" toggles to 2× for crisp images / slide decks.
+  let fitMode = "width";            // "width" | "page" | null(manual) — persists across window resize so the page always fills (no border)
   const MINZ = 0.1, MAXZ = 8;
   const HL_W = 9, PEN_W = 2.2;
   const HL_ALPHA = 0.4;
@@ -408,7 +409,7 @@
   function updateDeckPadding(){
     if(state.docs.length <= 1){
       const pw = state.docs[0] ? state.docs[0].panel.offsetWidth : 0;
-      const pad = Math.max(8, (deck.clientWidth - pw)/2);   // center a lone doc; sums to clientWidth → no extra scrollbar
+      const pad = Math.max(0, (deck.clientWidth - pw)/2);   // center a lone doc; floor 0 so a full-width page sits flush (no forced margin → no h-scrollbar)
       deck.style.paddingLeft = deck.style.paddingRight = pad + "px"; return;
     }
     const half = deck.clientWidth/2;
@@ -620,7 +621,23 @@
     if(t && t.classList && t.classList.contains("panel-body") && t._doc) state.active = t._doc;  // scrolling a doc selects it
     scheduleRender();
   }, true);
-  window.addEventListener("resize", ()=>{ updateDeckPadding(); renderVisible(true); updateStatus(); });
+  function onDeckResize(){
+    if(fitMode && activeOrFocused()){ applyFit(true); }   // keep the page filling the deck as it resizes (window drag, sidebar toggle, layout settle)
+    else { updateDeckPadding(); renderVisible(true); }
+    updateStatus();
+  }
+  if(window.ResizeObserver){
+    // Observe the deck itself — fires on window resize, sidebar collapse/expand, AND the initial layout settle
+    // (deck width isn't final until the first page lays out), so the one-shot open-time fit can't get stuck on a stale width.
+    let _rw = 0, _rh = 0;
+    new ResizeObserver(()=>{
+      if(deck.clientWidth === _rw && deck.clientHeight === _rh) return;   // ignore child-only mutations → no feedback loop
+      _rw = deck.clientWidth; _rh = deck.clientHeight;
+      onDeckResize();
+    }).observe(deck);
+  } else {
+    window.addEventListener("resize", onDeckResize);
+  }
 
   // ===================================================================
   //  Zoom (cursor-anchored, works with native scroll)
@@ -645,6 +662,7 @@
     updateStatus();
   }
   function zoomAtClient(cx, cy, factor, smooth){
+    fitMode = null;   // manual zoom opts out of auto-fit-on-resize
     const target = document.elementFromPoint(cx,cy);
     const pageEl = target && target.closest ? target.closest(".page") : null;
     let anchor = null;
@@ -668,10 +686,19 @@
       if(dist<bestD){ bestD=dist; best=d; } }
     return best || state.docs[0];
   }
+  function fitZoomFor(d){
+    return (fitMode==="page")
+      ? Math.min((deck.clientWidth-60)/docDispW(d), (deck.clientHeight-60)/docDispH(d))
+      : (deck.clientWidth-30)/docDispW(d);   // width: panel = docW*zoom + 24, so -30 → panel ≈ clientWidth-6 (fills, no h-scrollbar)
+  }
+  function applyFit(smooth){   // re-apply the current fit mode WITHOUT scrolling — used on window resize
+    const d = activeOrFocused(); if(!d || !fitMode) return;
+    applyZoom(clamp(fitZoomFor(d), MINZ, MAXZ), smooth);
+  }
   function fitWidth(){
-    const d = (state.active && state.docs.indexOf(state.active)>=0) ? state.active : focusedPanelDoc(); if(!d) return;
-    const avail = deck.clientWidth - 60;
-    applyZoom(clamp(avail / docDispW(d), MINZ, MAXZ));
+    fitMode = "width";
+    const d = activeOrFocused(); if(!d) return;
+    applyZoom(clamp(fitZoomFor(d), MINZ, MAXZ));
     scrollToDoc(d);
   }
 
@@ -1101,9 +1128,9 @@
   // ---- zoom presets ----
   function setZoom(z){ const c = deckCenter(); zoomAtClient(c.x, c.y, clamp(z,MINZ,MAXZ)/state.zoom); }
   function fitPage(){
+    fitMode = "page";
     const d = activeOrFocused(); if(!d) return;
-    const z = Math.min((deck.clientWidth-60)/docDispW(d), (deck.clientHeight-60)/docDispH(d));
-    applyZoom(clamp(z, MINZ, MAXZ)); scrollToDoc(d);
+    applyZoom(clamp(fitZoomFor(d), MINZ, MAXZ)); scrollToDoc(d);
   }
   const zoomMenu = $("zoomMenu");
   function toggleZoomMenu(show){
