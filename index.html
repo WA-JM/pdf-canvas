@@ -358,6 +358,7 @@
 
   const DPR = Math.min(window.devicePixelRatio || 1, 3);
   const MAX_CANVAS = 6000;
+  const snapPx = v => Math.round(v * DPR) / DPR;   // snap a CSS length so it lands on a whole DEVICE pixel → canvas maps 1:1, no fractional resample
   let renderSS = 1;                 // DEFAULT 1:1 = crisp text (mostly-text reading); "Aa" toggles to 2× for crisp images / slide decks.
   let fitMode = "width";            // "width" | "page" | null(manual) — persists across window resize so the page always fills (no border)
   const MINZ = 0.1, MAXZ = 8;
@@ -537,8 +538,8 @@
     let mw = 1;
     for(const p of d.pages){
       const w = pageDispW(p), h = pageDispH(p);
-      p.el.style.width  = (w * state.zoom) + "px";
-      p.el.style.height = (h * state.zoom) + "px";
+      p.el.style.width  = snapPx(w * state.zoom) + "px";   // whole-device-px → canvas blits 1:1, no CSS-bilinear softening
+      p.el.style.height = snapPx(h * state.zoom) + "px";
       if(p._textBuilt) positionTextLayer(p);
       mw = Math.max(mw, w);
     }
@@ -562,7 +563,13 @@
 
   async function renderPage(p, force){
     const q = pageQuality(p), rot = p.doc.rotation||0;
-    if(p.rendered && !force && p.renderedRot===rot && Math.abs(q/p.renderedQ - 1) < 0.22) return;
+    // Mid-gesture (smooth zoom): NEVER re-raster an already-painted page — let it CSS-scale smoothly and
+    // re-raster ONCE on settle. Re-rastering mid-gesture resizes/clears the (fullscreen-large in theater)
+    // visible canvas over and over → that is the "flashing". A not-yet-painted page still renders to fill in.
+    if(!force && smoothZooming && p.rendered && p.renderedRot===rot) return;
+    // At rest, tight tolerance so the settled frame is always drawn at the exact display resolution —
+    // never a stale bitmap the browser CSS-bilinear-rescales (the old 0.22 band was a constant softness).
+    if(p.rendered && !force && p.renderedRot===rot && Math.abs(q/p.renderedQ - 1) < 0.04) return;
     if(p.rendering){ p.pendingQ = q; return; }
     p.rendering = true;
     try{
@@ -573,9 +580,25 @@
       if(p._task){ try{ p._task.cancel(); }catch(_){} }
       p._task = page.render({ canvasContext: tmp.getContext("2d",{alpha:false}), viewport: vp });
       await p._task.promise; p._task = null;
-      const vis = p.canvas;
-      vis.width = tmp.width; vis.height = tmp.height;
-      vis.getContext("2d",{alpha:false}).drawImage(tmp, 0, 0);
+      // The new bitmap is prepared OFF-SCREEN, then swapped into the DOM as a whole element — the on-screen
+      // canvas is NEVER resized/cleared in place, so there is no blank/black frame (the theater zoom flash),
+      // even for a fullscreen page. Target = the EXACT integer device-pixel box the page occupies on screen
+      // (= the element's snapped CSS size * DPR) → canvas maps 1:1, no fractional CSS resample.
+      const bw = Math.max(1, Math.round(pageDispW(p) * state.zoom * DPR));
+      const bh = Math.max(1, Math.round(pageDispH(p) * state.zoom * DPR));
+      let next;
+      if(tmp.width === bw && tmp.height === bh){
+        next = tmp;                                  // renderSS=1: offscreen already IS the display size → reuse verbatim (zero resampling = sharpest on a DPR=1 screen)
+      } else {
+        next = document.createElement("canvas"); next.width = bw; next.height = bh;
+        const nctx = next.getContext("2d",{alpha:false});
+        nctx.imageSmoothingEnabled = true; nctx.imageSmoothingQuality = "high";   // supersample / MAX_CANVAS-clamp case: high-quality downscale here, never CSS/GPU bilinear (that made the old 2x path soft)
+        nctx.drawImage(tmp, 0, 0, tmp.width, tmp.height, 0, 0, bw, bh);
+      }
+      next.className = "pg";
+      const old = p.canvas;
+      p.el.replaceChild(next, old);                  // atomic swap: fully-painted canvas in, old out — no intermediate clear
+      p.canvas = next; old.width = old.height = 0;   // release the old bitmap
       p.rendered = true; p.renderedQ = q; p.renderedRot = rot;
       if(p.ph){ p.ph.remove(); p.ph = null; }
       layoutAnno(p);
@@ -647,14 +670,19 @@
   // This happens ALWAYS (even after a manual zoom) so "drag the window smaller → the PDF shrinks to fit" just works.
   // Height-only changes are ignored for fit-width (a manual zoom-in makes the panel overflow → an h-scrollbar shrinks
   // the deck HEIGHT, not width → we must NOT re-fit there, or the zoom would be undone instantly). Fit-page tracks both.
-  let _deckW = 0, _deckH = 0;
+  let _deckW = 0, _deckH = 0, _fitSuppressUntil = 0;
   function onDeckResize(){
     const w = deck.clientWidth, h = deck.clientHeight;
     if(w === _deckW && h === _deckH) return;                 // child-only mutation → no feedback loop
     const widthChanged = w !== _deckW;
     _deckW = w; _deckH = h;
+    if(smoothZooming) return;   // a zoom gesture is just toggling scrollbars — re-fitting/re-rastering NOW is the theater "flashing"; applyZoom already re-laid-out + re-centered, and the settle re-renders cleanly
     const d = activeOrFocused();                       // capture the selected doc BEFORE re-fitting
-    if(d && (widthChanged || fitMode === "page")){
+    if(performance.now() < _fitSuppressUntil){         // a SEARCH sidebar toggle is animating the deck width → DON'T re-fit: keep the page's zoom AND scrollTop fixed (no resize, no lost place); just re-center horizontally + repaint
+      if(d) centerDocInstant(d); else updateDeckPadding();
+      renderVisible(true);
+    }
+    else if(d && (widthChanged || fitMode === "page")){
       applyFit(true);
       centerDocInstant(d);                             // keep the selected doc centered (multi-doc layout would otherwise drift)
     }
@@ -667,7 +695,7 @@
   // ===================================================================
   //  Zoom (cursor-anchored, works with native scroll)
   // ===================================================================
-  let zoomSettleTimer = 0;
+  let zoomSettleTimer = 0, smoothZooming = false;
   function redrawVisibleAnnos(){
     const vh=window.innerHeight, vw=window.innerWidth;
     for(const d of state.docs) for(const p of d.pages){ const r=p.el.getBoundingClientRect();
@@ -679,9 +707,11 @@
     updateDeckPadding();
     if(smooth){
       // during a zoom gesture, defer the costly pdf.js re-raster + anno redraw to a "settle"
+      smoothZooming = true;
       clearTimeout(zoomSettleTimer);
-      zoomSettleTimer = setTimeout(()=>{ renderVisible(true); redrawVisibleAnnos(); }, 140);
+      zoomSettleTimer = setTimeout(()=>{ smoothZooming = false; renderVisible(true); redrawVisibleAnnos(); }, 140);   // settle → force a fresh raster at the EXACT zoom (no lingering scaled bitmap)
     }else{
+      smoothZooming = false;
       renderVisible(true); redrawVisibleAnnos();
     }
     updateStatus();
@@ -1105,13 +1135,13 @@
     _searchPrevCollapsed = document.querySelector(".sidebar").classList.contains("collapsed");
     document.querySelector(".side-tabs").style.display="none";
     $("docList").style.display="none"; $("thumbList").style.display="none"; $("resultList").style.display="";
-    setSidebarCollapsed(false);
+    setSidebarCollapsed(false, true);   // preserveView: opening search must NOT resize the document
   }
   function exitSearchSidebar(){
     $("resultList").style.display="none";
     document.querySelector(".side-tabs").style.display="";
     setSidebarMode(sidebarMode);
-    setSidebarCollapsed(_searchPrevCollapsed);
+    setSidebarCollapsed(_searchPrevCollapsed, true);   // preserveView: closing search must NOT resize the document → you land exactly where you left off
   }
 
   async function runSearch(){
@@ -1264,7 +1294,10 @@
   $("btnRotR").onclick = ()=>rotateDoc(1);
 
   // ---- collapsible sidebar (collapsed by default) ----
-  function setSidebarCollapsed(c){
+  function setSidebarCollapsed(c, preserveView){
+    // preserveView (search open/close): suppress the auto-refit that onDeckResize would otherwise run on the width change,
+    // so the document keeps its exact size + scroll position. 320ms covers the .16s flex-basis transition + the 180ms settle below.
+    if(preserveView) _fitSuppressUntil = performance.now() + 320;
     document.querySelector(".sidebar").classList.toggle("collapsed", c);
     setTimeout(()=>{ updateDeckPadding(); renderVisible(true); }, 180);   // recompute after the width transition
   }
